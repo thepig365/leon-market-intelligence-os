@@ -38,3 +38,4 @@ def test_health_routes_are_registered() -> None:
     assert "/ready" in paths
     assert "/api/v1/demo/run" in paths
     assert "/api/v1/valuation/meta-acceptance" in paths
+    assert "/dashboard/{page}" in paths

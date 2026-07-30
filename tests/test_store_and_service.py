@@ -15,6 +15,9 @@ def test_daily_run_is_append_only_and_reproducible(tmp_path: Path) -> None:
     assert counts["universe_runs"] == 2
     assert counts["screen_runs"] == 2
     assert counts["reports"] == 2
+    history = service.store.history_json("reports")
+    assert len(history) == 2
+    assert history[0]["payload"]["data_mode"] == "synthetic_replay"
 
 
 def test_meta_valuation_is_versioned(tmp_path: Path) -> None:

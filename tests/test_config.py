@@ -12,6 +12,10 @@ def test_safe_defaults_are_locked() -> None:
     assert settings.can_trade is False
     assert settings.live_trading_enabled is False
     assert settings.paper_trading_enabled is False
+    assert settings.parsed_sec_watchlist() == {
+        "AAPL": "320193",
+        "META": "1326801",
+    }
 
 
 @pytest.mark.parametrize(

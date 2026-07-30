@@ -56,6 +56,7 @@ class SECProvider(Provider):
         length = min(len(recent[field]) for field in required)
         return [
             {
+                "cik": normalised_cik,
                 "accession_number": recent["accessionNumber"][index],
                 "filing_date": recent["filingDate"][index],
                 "form": recent["form"][index],

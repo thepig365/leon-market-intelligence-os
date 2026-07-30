@@ -20,6 +20,22 @@ app = FastAPI(
     version=__version__,
 )
 
+DASHBOARD_PAGES = {
+    "command-centre": "指挥中心",
+    "top-10": "今日 Top 10",
+    "strategy-screener": "策略筛选",
+    "news-trading": "新闻研究",
+    "institutional-insider": "机构与内部人",
+    "intrinsic-value": "内在价值",
+    "watchlists": "观察名单",
+    "conditional-plans": "条件计划",
+    "reports-journal": "报告与日志",
+    "system-health": "系统健康",
+    "settings": "设置",
+    "unusual-options": "异常期权（延后）",
+    "paper-trades": "模拟交易（关闭）",
+}
+
 
 @lru_cache
 def get_service() -> LMIOService:
@@ -156,15 +172,74 @@ def command_centre() -> str:
         <section><h2>中文简报</h2><pre>{escape(report["message_zh"])}</pre>
         <ul>{warnings}</ul></section>
         """
+    nav = " ".join(
+        f'<a href="/dashboard/{slug}">{escape(label)}</a>'
+        for slug, label in DASHBOARD_PAGES.items()
+    )
     return f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>LMIO 指挥中心</title><style>
     body{{margin:0;background:#f5f5f2;color:#171717;font:16px/1.6 system-ui,sans-serif}}
     main{{max-width:1180px;margin:auto;padding:48px 24px}}h1{{font-size:clamp(2rem,5vw,4rem)}}
+    nav{{display:flex;gap:14px;overflow:auto;padding:14px 0;border-bottom:1px solid #ccc}}
+    nav a{{color:#171717;white-space:nowrap}}
     section{{background:white;border:1px solid #ddd;padding:24px;margin:20px 0}}
     .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}}
     .grid section{{margin:0}}.muted{{color:#5f6368}}table{{width:100%;border-collapse:collapse}}
     th,td{{padding:10px;text-align:left;border-bottom:1px solid #ddd}}pre{{white-space:pre-wrap}}
     code{{background:#eee;padding:2px 5px}}@media(max-width:620px){{main{{padding:24px 14px}}
     table{{font-size:13px}}th:nth-child(2),td:nth-child(2){{display:none}}}}
-    </style></head><body><main>{body}</main></body></html>"""
+    </style></head><body><main><nav>{nav}</nav>{body}</main></body></html>"""
+
+
+@app.get("/dashboard/{page}", response_class=HTMLResponse, tags=["dashboard"])
+def dashboard_page(page: str) -> str:
+    if page not in DASHBOARD_PAGES:
+        raise HTTPException(status_code=404, detail="Unknown dashboard page.")
+    service = get_service()
+    report = service.store.latest_json("reports")
+    if page == "command-centre":
+        return command_centre()
+    if page in {"unusual-options", "paper-trades"}:
+        status = (
+            "V1 延后模块，未配置数据提供商。"
+            if page == "unusual-options"
+            else "CAN_TRADE、LIVE_TRADING_ENABLED 和 PAPER_TRADING_ENABLED 均为 false。"
+        )
+    elif page == "intrinsic-value":
+        valuations = service.store.history_json("valuation_runs")
+        status = f"已保存 {len(valuations)} 个版本化估值运行；可通过 API 查看完整假设与敏感度。"
+    elif page in {"top-10", "watchlists", "strategy-screener"}:
+        count = len(report["top_10"]) if report else 0
+        status = f"当前观察名单 {count} 项；每项保留策略、证据、四维评分和缺失字段。"
+    elif page == "news-trading":
+        status = f"已保存 {service.store.counts()['news_events']} 个去重官方事件。"
+    elif page == "system-health":
+        status = json_status(service.store.counts())
+    elif page == "institutional-insider":
+        status = "基础解析模块待数据源验证；不以机构或内部人信息单独触发建议。"
+    elif page == "conditional-plans":
+        status = "条件计划仅用于研究确认、失效和到期状态；不存在订单执行路径。"
+    elif page == "reports-journal":
+        status = f"已保存 {service.store.counts()['reports']} 份版本化报告。"
+    else:
+        status = "所有敏感配置仅来自环境变量；页面不显示任何密钥。"
+    nav = " ".join(
+        f'<a href="/dashboard/{slug}">{escape(label)}</a>'
+        for slug, label in DASHBOARD_PAGES.items()
+    )
+    return f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>{escape(DASHBOARD_PAGES[page])} · LMIO</title><style>
+    body{{margin:0;background:#f5f5f2;color:#171717;font:16px/1.6 system-ui,sans-serif}}
+    main{{max-width:1100px;margin:auto;padding:40px 24px}}nav{{display:flex;gap:14px;overflow:auto;
+    padding:14px 0;border-bottom:1px solid #ccc}}nav a{{color:#171717;white-space:nowrap}}
+    section{{background:#fff;border:1px solid #ddd;padding:28px;margin-top:24px}}
+    </style></head><body><main><nav>{nav}</nav><section>
+    <p>LEON MARKET INTELLIGENCE OS</p><h1>{escape(DASHBOARD_PAGES[page])}</h1>
+    <p>{escape(status)}</p><p><a href="/">返回指挥中心</a></p>
+    </section></main></body></html>"""
+
+
+def json_status(value: dict[str, int]) -> str:
+    return "；".join(f"{key}={count}" for key, count in value.items())

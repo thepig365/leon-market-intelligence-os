@@ -31,6 +31,7 @@ def test_sec_contract_normalises_recent_filings() -> None:
     assert provider.health().state is ProviderState.READY
     assert provider.recent_filings("320193") == [
         {
+            "cik": "0000320193",
             "accession_number": "0001",
             "filing_date": "2026-01-01",
             "form": "8-K",

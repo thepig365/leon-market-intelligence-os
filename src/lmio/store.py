@@ -141,6 +141,25 @@ class RuntimeStore:
             ).fetchone()
         return json.loads(row["payload"]) if row else None
 
+    def history_json(self, table: str, limit: int = 50) -> list[dict[str, Any]]:
+        allowed = {"universe_runs", "screen_runs", "valuation_runs", "reports"}
+        if table not in allowed:
+            raise ValueError(f"unsupported history table: {table}")
+        bounded_limit = max(1, min(limit, 200))
+        with self.connection() as connection:
+            rows = connection.execute(
+                f"SELECT * FROM {table} ORDER BY id DESC LIMIT ?",
+                (bounded_limit,),
+            ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            for key in ("payload", "input_payload", "result_payload"):
+                if key in item:
+                    item[key] = json.loads(item[key])
+            result.append(item)
+        return result
+
     def counts(self) -> dict[str, int]:
         tables = (
             "universe_runs",
@@ -157,3 +176,14 @@ class RuntimeStore:
                 table: int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
                 for table in tables
             }
+
+    def put_news_event(self, fingerprint: str, payload: dict[str, Any]) -> bool:
+        with self.connection() as connection:
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO news_events(fingerprint, payload)
+                VALUES (?, ?)
+                """,
+                (fingerprint, json.dumps(payload, sort_keys=True, default=str)),
+            )
+            return cursor.rowcount == 1

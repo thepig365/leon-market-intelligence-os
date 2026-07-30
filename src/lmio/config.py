@@ -45,6 +45,10 @@ class Settings(BaseSettings):
         validation_alias="LMIO_DATABASE_PATH",
     )
     sec_user_agent: str = Field(default="", validation_alias="SEC_USER_AGENT")
+    sec_watchlist: str = Field(
+        default="AAPL:320193,META:1326801",
+        validation_alias="LMIO_SEC_WATCHLIST",
+    )
     telegram_bot_token: str = Field(default="", validation_alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str = Field(default="", validation_alias="TELEGRAM_CHAT_ID")
     admin_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="LMIO_ADMIN_API_KEY")
@@ -85,6 +89,22 @@ class Settings(BaseSettings):
             ),
             "admin_api_key_configured": bool(self.admin_api_key.get_secret_value()),
         }
+
+    def parsed_sec_watchlist(self) -> dict[str, str]:
+        result: dict[str, str] = {}
+        for pair in self.sec_watchlist.split(","):
+            if not pair.strip():
+                continue
+            try:
+                symbol, cik = pair.split(":", maxsplit=1)
+            except ValueError as error:
+                raise ValueError("LMIO_SEC_WATCHLIST must use SYMBOL:CIK pairs") from error
+            symbol = symbol.strip().upper()
+            cik = cik.strip().lstrip("0")
+            if not symbol or not cik.isdigit():
+                raise ValueError("LMIO_SEC_WATCHLIST contains an invalid SYMBOL:CIK pair")
+            result[symbol] = cik
+        return result
 
 
 @lru_cache

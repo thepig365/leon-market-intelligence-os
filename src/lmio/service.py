@@ -5,6 +5,7 @@ import json
 
 from lmio.config import Settings
 from lmio.demo import demo_universe, meta_acceptance_input
+from lmio.domain import SecuritySnapshot
 from lmio.reports import build_daily_report, classify_regime
 from lmio.screens import run_core_screens
 from lmio.store import RuntimeStore
@@ -19,7 +20,14 @@ class LMIOService:
         self.store.migrate()
 
     def run_demo_daily(self) -> dict[str, object]:
-        snapshots = demo_universe()
+        return self.run_daily(demo_universe(), data_mode="synthetic_replay")
+
+    def run_daily(
+        self,
+        snapshots: list[SecuritySnapshot],
+        *,
+        data_mode: str,
+    ) -> dict[str, object]:
         policy = UniversePolicy()
         investable = build_investable_universe(snapshots, policy)
         serialised = [item.model_dump(mode="json") for item in investable]
@@ -49,7 +57,7 @@ class LMIOService:
             universe_checked=len(snapshots),
             investable=len(investable),
             regime=regime,
-            data_mode="synthetic_replay",
+            data_mode=data_mode,
         )
         self.store.append_json(
             "reports",
