@@ -130,10 +130,12 @@ def test_news_analysis_creates_only_a_conditional_draft(
         fingerprint,
         NewsAnalysisInput(
             reaction=ReactionEvidence(
-                window_minutes=15,
+                window_minutes=30,
                 stock_return_pct=2,
                 benchmark_return_pct=0,
                 relative_volume=1.5,
+                vwap_confirmed=True,
+                opening_range_confirmed=True,
             )
         ),
     )

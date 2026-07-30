@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 from lmio.domain import ValuationInput, ValuationPerspective, ValuationResult
 
-CALCULATION_VERSION = "valuation-v1"
+CALCULATION_VERSION = "valuation-v2"
 
 
 def _dcf_per_share(
@@ -77,6 +77,117 @@ def _perspective(
     )
 
 
+def _multiple_value(
+    operating_metric: float,
+    multiple: float,
+    net_cash: float,
+    diluted_shares: float,
+) -> float:
+    return ((operating_metric * multiple) + net_cash) / diluted_shares
+
+
+def _multi_model_perspective(
+    data: ValuationInput,
+    *,
+    reported_fcf: float,
+    blended_dcf_value: float,
+) -> tuple[ValuationPerspective, list[dict[str, float | str]], float]:
+    components: list[dict[str, float | str]] = [
+        {
+            "model": "Blended FCFF/Owner Earnings DCF",
+            "value_per_share": round(blended_dcf_value, 2),
+            "weight": 1.0,
+        }
+    ]
+    if data.revenue is not None and data.ev_revenue_multiple is not None:
+        components.append(
+            {
+                "model": "EV/Revenue",
+                "value_per_share": round(
+                    _multiple_value(
+                        data.revenue,
+                        data.ev_revenue_multiple,
+                        data.net_cash,
+                        data.diluted_shares,
+                    ),
+                    2,
+                ),
+                "weight": 1.0,
+            }
+        )
+    if data.ebitda is not None and data.ev_ebitda_multiple is not None:
+        components.append(
+            {
+                "model": "EV/EBITDA",
+                "value_per_share": round(
+                    _multiple_value(
+                        data.ebitda,
+                        data.ev_ebitda_multiple,
+                        data.net_cash,
+                        data.diluted_shares,
+                    ),
+                    2,
+                ),
+                "weight": 1.0,
+            }
+        )
+    if data.net_income is not None and data.net_income > 0 and data.pe_multiple is not None:
+        components.append(
+            {
+                "model": "P/E",
+                "value_per_share": round(
+                    data.net_income * data.pe_multiple / data.diluted_shares,
+                    2,
+                ),
+                "weight": 1.0,
+            }
+        )
+    if reported_fcf > 0 and data.p_fcf_multiple is not None:
+        components.append(
+            {
+                "model": "P/FCF",
+                "value_per_share": round(
+                    reported_fcf * data.p_fcf_multiple / data.diluted_shares,
+                    2,
+                ),
+                "weight": 1.0,
+            }
+        )
+    total_weight = sum(float(item["weight"]) for item in components)
+    base = (
+        sum(float(item["value_per_share"]) * float(item["weight"]) for item in components)
+        / total_weight
+    )
+    values = [float(item["value_per_share"]) for item in components]
+    lowest = min(values)
+    highest = max(values)
+    pessimistic = lowest * (1.1 if lowest < 0 else 0.9)
+    optimistic = highest * (1.1 if highest >= 0 else 0.9)
+    warning = None
+    confidence_multiplier = 1.0
+    if len(components) == 1:
+        warning = "Only one applicable model has approved inputs; confidence reduced."
+        confidence_multiplier = 0.65
+    elif lowest <= 0:
+        warning = "At least one applicable model implies non-positive equity value."
+        confidence_multiplier = 0.6
+    elif highest / lowest > 1.75:
+        warning = "Applicable model values diverge materially; review assumptions."
+        confidence_multiplier = 0.8
+    return (
+        ValuationPerspective(
+            name="Multi-Model Fair Value",
+            pessimistic=round(pessimistic, 2),
+            base=round(base, 2),
+            optimistic=round(optimistic, 2),
+            applicability=", ".join(str(item["model"]) for item in components),
+            warning=warning,
+        ),
+        components,
+        confidence_multiplier,
+    )
+
+
 def safety_label(margin: float) -> str:
     if margin > 0.30:
         return "Substantial"
@@ -115,11 +226,16 @@ def run_valuation(data: ValuationInput) -> ValuationResult:
         warning,
     )
     blended_cash_flow = (reported_fcf * 0.4) + (owner_earnings * 0.6)
-    multi, multi_terminal = _perspective(
-        "Multi-Model Fair Value",
+    blended_dcf, multi_terminal = _perspective(
+        "Blended Cash-Flow DCF",
         blended_cash_flow,
         data,
-        "blended cash-flow proxy; company-type extensions follow",
+        "cash-flow cross-check",
+    )
+    multi, model_components, model_confidence_multiplier = _multi_model_perspective(
+        data,
+        reported_fcf=reported_fcf,
+        blended_dcf_value=blended_dcf.base,
     )
     margin = (multi.base - data.market_price) / multi.base if multi.base else -1
     sensitivity: list[dict[str, float]] = []
@@ -143,6 +259,7 @@ def run_valuation(data: ValuationInput) -> ValuationResult:
     terminal_max = max(strict_terminal, owner_terminal, multi_terminal)
     if terminal_max > 0.8:
         confidence *= 0.85
+    confidence *= model_confidence_multiplier
 
     return ValuationResult(
         symbol=data.symbol,
@@ -159,9 +276,17 @@ def run_valuation(data: ValuationInput) -> ValuationResult:
             "forecast_years": data.forecast_years,
             "reported_fcf": reported_fcf,
             "owner_earnings": owner_earnings,
+            "revenue": data.revenue,
+            "ebitda": data.ebitda,
+            "net_income": data.net_income,
+            "ev_revenue_multiple": data.ev_revenue_multiple,
+            "ev_ebitda_multiple": data.ev_ebitda_multiple,
+            "pe_multiple": data.pe_multiple,
+            "p_fcf_multiple": data.p_fcf_multiple,
             "terminal_value_share_max": round(terminal_max, 4),
             "source": data.source,
         },
+        model_components=model_components,
         sensitivity=sensitivity,
         calculation_version=CALCULATION_VERSION,
         calculated_at=datetime.now(UTC),

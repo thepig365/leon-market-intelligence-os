@@ -21,7 +21,10 @@ evidence references. It does not create a duplicate project-memory system.
 - Strict FCF, Normalised Owner Earnings and Multi-Model Fair Value views;
 - META-shaped high-growth/high-CapEx acceptance fixture;
 - official SEC EDGAR read-only adapter and data-contract tests;
+- structured 13F, Schedule 13D/13G and Form 4 ownership parsing;
 - official-source news deduplication and impact scoring;
+- directional reaction confirmation using abnormal return, relative volume,
+  VWAP, opening-range structure and gap retention;
 - evidence-audited candidate and conditional-plan state machines;
 - Chinese daily brief and grouped, deduplicated, rate-limited Telegram outbox;
 - append-only/versioned local SQLite runtime store;
@@ -29,7 +32,7 @@ evidence references. It does not create a duplicate project-memory system.
 - health, readiness and provider status;
 - responsive read-only command centre;
 - protected mutating HTTP endpoints;
-- structured audit logging with secret redaction.
+- structured audit logging with secret redaction;
 - optional evidence-only OpenAI Responses API adapter, disabled by default;
 - documented human-mediated Kimi research workflow;
 - protected deployment, operations and backup/recovery runbooks;

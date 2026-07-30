@@ -60,6 +60,14 @@ transition evidence, ownership events, signals, feedback, strategy performance
 and watchlists. These tables cover the offline V1 decision-support workflow;
 they are not an order-management system.
 
+Migration 004 adds generic ingestion fingerprints so repeated SEC ownership
+monitoring cannot duplicate the same parsed filing record. Structured ownership
+records are derived deterministically from official 13F information tables,
+Schedule 13D/13G documents and Form 4 XML; they remain confirmation evidence,
+never an automatic trade trigger. Current 13F position values are interpreted
+in the SEC-required nearest-dollar unit, and the information-table XML is
+resolved from the official filing directory rather than the cover document.
+
 ## State models
 
 Candidates use:

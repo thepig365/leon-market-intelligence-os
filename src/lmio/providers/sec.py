@@ -1,13 +1,17 @@
 """Read-only SEC EDGAR submissions adapter."""
 
 import json
+import re
 from collections.abc import Callable
 from typing import Any
 from urllib import request
+from urllib.parse import urlsplit
 
 from lmio.providers.base import Provider, ProviderHealth, ProviderState
 
 SEC_BASE_URL = "https://data.sec.gov"
+SEC_DOCUMENT_HOSTS = {"www.sec.gov", "sec.gov"}
+MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
 Transport = Callable[[str, dict[str, str]], bytes]
 
 
@@ -65,6 +69,59 @@ class SECProvider(Provider):
             }
             for index in range(length)
         ]
+
+    def fetch_document(self, url: str) -> str:
+        """Fetch one official SEC filing document with a bounded response size."""
+
+        parsed = urlsplit(url)
+        if parsed.scheme != "https" or parsed.hostname not in SEC_DOCUMENT_HOSTS:
+            raise ValueError("SEC document URL must use an approved sec.gov HTTPS host")
+        if not self.user_agent:
+            raise RuntimeError("SEC_USER_AGENT is required by SEC fair-access policy")
+        raw = self.transport(
+            url,
+            {
+                "User-Agent": self.user_agent,
+                "Host": parsed.hostname,
+            },
+        )
+        if len(raw) > MAX_DOCUMENT_BYTES:
+            raise ValueError("SEC document exceeds the configured size limit")
+        return raw.decode("utf-8", errors="replace")
+
+    def ownership_document_url(self, filing: dict[str, Any]) -> str:
+        """Resolve the parseable official ownership document for a filing."""
+
+        cik = str(filing["cik"]).lstrip("0")
+        accession = str(filing["accession_number"]).replace("-", "")
+        base_url = f"https://www.sec.gov/Archives/edgar/data/{cik}/{accession}"
+        form = str(filing["form"]).upper()
+        if not form.startswith("13F"):
+            primary = str(filing["primary_document"])
+            if not re.fullmatch(r"[A-Za-z0-9_.-]+", primary):
+                raise ValueError("SEC primary document name is invalid")
+            return f"{base_url}/{primary}"
+
+        index = json.loads(self.fetch_document(f"{base_url}/index.json"))
+        items = index.get("directory", {}).get("item", [])
+        if not isinstance(items, list):
+            raise ValueError("SEC filing directory contract is incomplete")
+        candidates = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name", ""))
+            normalised = name.lower()
+            if (
+                re.fullmatch(r"[A-Za-z0-9_.-]+", name)
+                and normalised.endswith(".xml")
+                and "information" in normalised
+                and "table" in normalised
+            ):
+                candidates.append(name)
+        if len(candidates) != 1:
+            raise ValueError("SEC 13F filing has no unique information-table XML")
+        return f"{base_url}/{candidates[0]}"
 
     def _get(self, path: str) -> dict[str, Any]:
         if not self.user_agent:

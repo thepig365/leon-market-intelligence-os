@@ -24,8 +24,10 @@ external provider or protected production environment has been activated.
 | Four dimension scoring | Implemented | `scoring.py` |
 | Earnings revision breadth and EPS revision | Implemented | `screens.py`, tests |
 | Official SEC monitoring | Implemented, external verification pending | `providers/sec.py`, `sec_monitor.py` |
+| 13F, Schedule 13D/13G and Form 4 parsing | Implemented with bounded official-document fetch and ingestion dedupe | `sec_ownership.py`, migration 004, parser/monitor tests |
 | News normalisation, dedupe and impact | Implemented | `news.py`, `news_plan.py` |
-| Three valuation perspectives and sensitivity | Implemented for supported company types | `valuation.py`, `routing.py` |
+| Directional reaction windows, VWAP, opening range and gap retention | Implemented | `news_plan.py`, API and news-plan tests |
+| Three valuation perspectives and sensitivity | Implemented for supported company types; multi-model output combines applicable DCF and approved market-multiple inputs | `valuation.py`, `routing.py` |
 | Banks, REITs, unprofitable and cyclical routing | Safely blocked from generic DCF | `routing.py`, tests |
 | Top 10 required fields | Implemented | `ScreenCandidate`, reports |
 | Top 3 decision cards | Implemented | `DecisionCard`, reports |

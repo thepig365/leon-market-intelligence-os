@@ -1,5 +1,7 @@
 """Translate important verified news into conditional research plans."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from lmio.domain import NewsEvent
@@ -12,14 +14,34 @@ class ReactionEvidence(BaseModel):
     stock_return_pct: float
     benchmark_return_pct: float
     relative_volume: float = Field(ge=0)
+    direction: Literal["bullish", "bearish"] = "bullish"
+    vwap_confirmed: bool = False
+    opening_range_confirmed: bool = False
+    gap_retention_pct: float | None = Field(default=None, ge=0, le=100)
 
     @property
     def abnormal_return_pct(self) -> float:
         return round(self.stock_return_pct - self.benchmark_return_pct, 2)
 
     @property
+    def direction_confirmed(self) -> bool:
+        if self.direction == "bullish":
+            return self.abnormal_return_pct >= 1
+        return self.abnormal_return_pct <= -1
+
+    @property
+    def structure_confirmed(self) -> bool:
+        gap_confirmed = self.gap_retention_pct is None or self.gap_retention_pct >= 50
+        return (
+            self.window_minutes >= 30
+            and self.vwap_confirmed
+            and self.opening_range_confirmed
+            and gap_confirmed
+        )
+
+    @property
     def confirmed(self) -> bool:
-        return self.abnormal_return_pct >= 1 and self.relative_volume >= 1.2
+        return self.direction_confirmed and self.relative_volume >= 1.2 and self.structure_confirmed
 
 
 def propose_news_plan(
@@ -38,9 +60,13 @@ def propose_news_plan(
         return None
     return ConditionalPlan(
         symbol=event.symbols[0],
-        thesis=f"{event.event_type}: {event.headline}",
+        thesis=(
+            f"{reaction.direction if reaction is not None else 'conditional'} "
+            f"{event.event_type}: {event.headline}"
+        ),
         confirmation_condition=(
-            "Price, volume and reaction-window evidence remain confirmed"
+            "Price, relative volume, VWAP, opening range and reaction-window evidence "
+            "remain confirmed"
             + (
                 f" ({reaction.window_minutes}m abnormal return "
                 f"{reaction.abnormal_return_pct:+.2f}%)."

@@ -8,7 +8,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 MIGRATION = """
 CREATE TABLE IF NOT EXISTS schema_versions (
     version INTEGER PRIMARY KEY,
@@ -322,6 +322,11 @@ CREATE TABLE IF NOT EXISTS paper_trade_events (
     observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS ingestion_dedup (
+    fingerprint TEXT PRIMARY KEY,
+    record_type TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 
@@ -523,6 +528,64 @@ class RuntimeStore:
                 VALUES (?, ?)
                 """,
                 (fingerprint, json.dumps(payload, sort_keys=True, default=str)),
+            )
+            return cursor.rowcount == 1
+
+    def put_ownership_event(
+        self,
+        fingerprint: str,
+        *,
+        symbol: str,
+        event_type: str,
+        source_url: str,
+        payload: dict[str, Any],
+    ) -> bool:
+        """Atomically persist one structured ownership record exactly once."""
+
+        with self.connection() as connection:
+            marker = connection.execute(
+                """
+                INSERT OR IGNORE INTO ingestion_dedup(fingerprint, record_type)
+                VALUES (?, 'ownership_event')
+                """,
+                (fingerprint,),
+            )
+            if marker.rowcount != 1:
+                return False
+            connection.execute(
+                """
+                INSERT INTO ownership_events(symbol, event_type, source_url, payload)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    symbol,
+                    event_type,
+                    source_url,
+                    json.dumps(payload, sort_keys=True, default=str),
+                ),
+            )
+            return True
+
+    def has_ingestion_fingerprint(self, fingerprint: str) -> bool:
+        """Return whether a bounded ingestion unit completed successfully."""
+
+        with self.connection() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM ingestion_dedup WHERE fingerprint = ?",
+                (fingerprint,),
+            ).fetchone()
+        return row is not None
+
+    def mark_ingestion_fingerprint(self, fingerprint: str, record_type: str) -> bool:
+        """Mark an ingestion unit complete after its records are persisted."""
+
+        with self.connection() as connection:
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO ingestion_dedup(fingerprint, record_type)
+                VALUES (?, ?)
+                """,
+                (fingerprint, record_type),
             )
             return cursor.rowcount == 1
 

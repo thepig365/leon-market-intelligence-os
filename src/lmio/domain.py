@@ -134,6 +134,13 @@ class ValuationInput(BaseModel):
     maintenance_capex: float | None = None
     growth_capex: float | None = None
     sustainable_owner_earnings: float | None = None
+    revenue: float | None = Field(default=None, gt=0)
+    ebitda: float | None = Field(default=None, gt=0)
+    net_income: float | None = None
+    ev_revenue_multiple: float | None = Field(default=None, gt=0)
+    ev_ebitda_multiple: float | None = Field(default=None, gt=0)
+    pe_multiple: float | None = Field(default=None, gt=0)
+    p_fcf_multiple: float | None = Field(default=None, gt=0)
     net_cash: float
     diluted_shares: float = Field(gt=0)
     growth_rate: float
@@ -163,7 +170,8 @@ class ValuationResult(BaseModel):
     safety_margin: float
     safety_label: str
     confidence: float
-    assumptions: dict[str, float | int | str]
+    assumptions: dict[str, float | int | str | None]
+    model_components: list[dict[str, float | str]]
     sensitivity: list[dict[str, float]]
     calculation_version: str
     calculated_at: datetime

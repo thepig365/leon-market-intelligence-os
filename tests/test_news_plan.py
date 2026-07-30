@@ -42,6 +42,8 @@ def test_reaction_window_requires_abnormal_return_and_volume() -> None:
         stock_return_pct=2,
         benchmark_return_pct=1.5,
         relative_volume=2,
+        vwap_confirmed=True,
+        opening_range_confirmed=True,
     )
     strong = weak.model_copy(update={"stock_return_pct": 3})
 
@@ -63,3 +65,56 @@ def test_reaction_window_requires_abnormal_return_and_volume() -> None:
         )
         is not None
     )
+
+
+def test_reaction_window_requires_vwap_opening_range_and_gap_retention() -> None:
+    base = ReactionEvidence(
+        window_minutes=30,
+        stock_return_pct=3,
+        benchmark_return_pct=1,
+        relative_volume=2,
+    )
+    assert base.confirmed is False
+    assert (
+        base.model_copy(
+            update={
+                "vwap_confirmed": True,
+                "opening_range_confirmed": True,
+                "gap_retention_pct": 40,
+            }
+        ).confirmed
+        is False
+    )
+    assert (
+        base.model_copy(
+            update={
+                "vwap_confirmed": True,
+                "opening_range_confirmed": True,
+                "gap_retention_pct": 60,
+            }
+        ).confirmed
+        is True
+    )
+
+
+def test_bearish_reaction_can_create_a_conditional_plan() -> None:
+    reaction = ReactionEvidence(
+        window_minutes=60,
+        stock_return_pct=-4,
+        benchmark_return_pct=-1,
+        relative_volume=2,
+        direction="bearish",
+        vwap_confirmed=True,
+        opening_range_confirmed=True,
+        gap_retention_pct=80,
+    )
+
+    plan = propose_news_plan(
+        event(),
+        price_confirmation=False,
+        evidence_urls=[],
+        reaction=reaction,
+    )
+
+    assert plan is not None
+    assert plan.thesis.startswith("bearish")
