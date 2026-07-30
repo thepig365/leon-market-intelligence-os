@@ -54,3 +54,28 @@ fundamentals provider activation must pass a cost and terms review.
 Development uses a versioned SQLite schema. Production may use PostgreSQL after
 the production readiness gate. Financial, score, valuation, plan and outcome
 history is append-only or versioned.
+
+Migration 003 adds normalised symbols, provider snapshots, candidate and plan
+transition evidence, ownership events, signals, feedback, strategy performance
+and watchlists. These tables cover the offline V1 decision-support workflow;
+they are not an order-management system.
+
+## State models
+
+Candidates use:
+
+```text
+DISCOVERED -> FILTERED -> RESEARCHING -> WATCHING -> CONFIRMED
+                                      \-> REJECTED / EXPIRED
+```
+
+Conditional plans use the governing state names, but the V1 safety guard blocks
+entry into `PAPER_READY` and `PAPER_OPEN`:
+
+```text
+DRAFT -> WAITING_CONFIRMATION -> PAPER_READY -> PAPER_OPEN
+   \-> INVALIDATED                         \-> CLOSED -> REVIEWED
+```
+
+Every persisted transition records time, actor, reason, previous/new state and
+evidence URLs.

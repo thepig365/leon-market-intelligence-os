@@ -26,3 +26,22 @@ def test_rapid_yen_strengthening_preserves_macro_shock_hypothesis() -> None:
 
     assert regime.label == "Macro Shock"
     assert "USD/JPY -2.50%" in regime.evidence
+
+
+def test_market_regime_exposes_strategy_and_risk_controls() -> None:
+    regime = classify_regime(
+        -1.5,
+        -1.8,
+        -2,
+        32,
+        28,
+        treasury_10y_change_bps=12,
+        dxy_change_pct=0.8,
+        oil_change_pct=-2,
+        gold_change_pct=1.2,
+        macro_events=["FOMC"],
+    )
+
+    assert regime.risk_multiplier < 1
+    assert regime.suppressed_strategies
+    assert regime.manual_review_required is True

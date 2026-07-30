@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from lmio.domain import NewsEvent
-from lmio.news_plan import propose_news_plan
+from lmio.news_plan import ReactionEvidence, propose_news_plan
 
 
 def event(tier: int = 1, significance: float = 90) -> NewsEvent:
@@ -34,3 +34,32 @@ def test_verified_news_creates_research_plan_not_order() -> None:
 
 def test_low_quality_source_is_rejected() -> None:
     assert propose_news_plan(event(tier=3), price_confirmation=True, evidence_urls=[]) is None
+
+
+def test_reaction_window_requires_abnormal_return_and_volume() -> None:
+    weak = ReactionEvidence(
+        window_minutes=30,
+        stock_return_pct=2,
+        benchmark_return_pct=1.5,
+        relative_volume=2,
+    )
+    strong = weak.model_copy(update={"stock_return_pct": 3})
+
+    assert (
+        propose_news_plan(
+            event(),
+            price_confirmation=True,
+            evidence_urls=[],
+            reaction=weak,
+        )
+        is None
+    )
+    assert (
+        propose_news_plan(
+            event(),
+            price_confirmation=False,
+            evidence_urls=[],
+            reaction=strong,
+        )
+        is not None
+    )

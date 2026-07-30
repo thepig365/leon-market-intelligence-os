@@ -33,6 +33,25 @@
       "cadence": "pre-market",
       "command": "python -m lmio.cli research-latest",
       "mutates_external_state": false
+    },
+    {
+      "id": "lmio-market-open-refresh",
+      "cadence": "after-open",
+      "command": "python -m lmio.cli import-csv --file ${LMIO_APPROVED_SNAPSHOT}",
+      "requires": ["LMIO_APPROVED_SNAPSHOT"],
+      "mutates_external_state": false
+    },
+    {
+      "id": "lmio-after-close-outcomes",
+      "cadence": "after-close",
+      "command": "python -m lmio.cli status",
+      "mutates_external_state": false
+    },
+    {
+      "id": "lmio-weekend-review",
+      "cadence": "weekend",
+      "command": "python -m lmio.cli status",
+      "mutates_external_state": false
     }
   ],
   "prohibited": [

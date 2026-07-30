@@ -3,9 +3,16 @@
 import hashlib
 import json
 
+from lmio.candidates import transition_candidate
 from lmio.config import Settings
 from lmio.demo import demo_universe, meta_acceptance_input
-from lmio.domain import NewsEvent, ScreenCandidate, SecuritySnapshot
+from lmio.domain import (
+    CandidateState,
+    NewsEvent,
+    ScreenCandidate,
+    SecuritySnapshot,
+    ValuationResult,
+)
 from lmio.reports import build_daily_report, classify_regime
 from lmio.research import build_research_pack
 from lmio.screens import run_core_screens
@@ -21,13 +28,19 @@ class LMIOService:
         self.store.migrate()
 
     def run_demo_daily(self) -> dict[str, object]:
-        return self.run_daily(demo_universe(), data_mode="synthetic_replay")
+        valuation = ValuationResult.model_validate(self.run_meta_acceptance())
+        return self.run_daily(
+            demo_universe(),
+            data_mode="synthetic_replay",
+            valuations={valuation.symbol: valuation},
+        )
 
     def run_daily(
         self,
         snapshots: list[SecuritySnapshot],
         *,
         data_mode: str,
+        valuations: dict[str, ValuationResult] | None = None,
     ) -> dict[str, object]:
         policy = UniversePolicy()
         investable = build_investable_universe(snapshots, policy)
@@ -44,6 +57,44 @@ class LMIOService:
             },
         )
         candidates = run_core_screens(investable)
+        for candidate in candidates:
+            evidence_urls = [
+                item.source_url for item in candidate.evidence if item.source_url is not None
+            ]
+            transitions = [
+                transition_candidate(
+                    symbol=candidate.symbol,
+                    strategy=candidate.strategy,
+                    previous_state=CandidateState.DISCOVERED,
+                    new_state=CandidateState.FILTERED,
+                    reason="Deterministic strategy filter completed.",
+                    actor="screening-agent",
+                    evidence_urls=evidence_urls,
+                )
+            ]
+            if candidate.state is CandidateState.RESEARCHING:
+                transitions.append(
+                    transition_candidate(
+                        symbol=candidate.symbol,
+                        strategy=candidate.strategy,
+                        previous_state=CandidateState.FILTERED,
+                        new_state=CandidateState.RESEARCHING,
+                        reason="Data confidence requires additional research.",
+                        actor="screening-agent",
+                        evidence_urls=evidence_urls,
+                    )
+                )
+            for transition in transitions:
+                self.store.append_json(
+                    "candidate_transitions",
+                    {
+                        "symbol": transition.symbol,
+                        "strategy": transition.strategy,
+                        "previous_state": transition.previous_state,
+                        "new_state": transition.new_state,
+                        "payload": transition.model_dump(mode="json"),
+                    },
+                )
         self.store.append_json(
             "screen_runs",
             {
@@ -59,6 +110,7 @@ class LMIOService:
             investable=len(investable),
             regime=regime,
             data_mode=data_mode,
+            valuations=valuations,
         )
         self.store.append_json(
             "reports",
@@ -86,9 +138,18 @@ class LMIOService:
             raise ValueError("No screen run exists")
         news = [NewsEvent.model_validate(item) for item in self.store.news_payloads()]
         candidates = [ScreenCandidate.model_validate(item) for item in latest[:limit]]
+        valuations: dict[str, ValuationResult] = {}
+        for item in self.store.history_json("valuation_runs", 200):
+            symbol = str(item["symbol"]).upper()
+            if symbol not in valuations:
+                valuations[symbol] = ValuationResult.model_validate(item["result_payload"])
         results: list[dict[str, object]] = []
         for candidate in candidates:
-            pack = build_research_pack(candidate, news, None)
+            pack = build_research_pack(
+                candidate,
+                news,
+                valuations.get(candidate.symbol.upper()),
+            )
             payload = pack.model_dump(mode="json")
             self.store.append_json(
                 "research_packs",

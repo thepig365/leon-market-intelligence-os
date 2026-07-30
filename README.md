@@ -12,7 +12,9 @@ evidence references. It does not create a duplicate project-memory system.
 ## Current implemented capability
 
 - reproducible investable-universe rules;
-- Quality Growth Momentum and Earnings Revision Momentum screens;
+- ten independent V1 strategy screens covering quality growth, revisions,
+  institutional accumulation, activist catalysts, insider value, QARP, PEAD,
+  verified news, oversold reversal and short-squeeze combinations;
 - independent quality, valuation, opportunity and timing scores;
 - explicit missing-data confidence reduction;
 - Top 10 and Top 3 ranking without forcing an opportunity;
@@ -20,10 +22,10 @@ evidence references. It does not create a duplicate project-memory system.
 - META-shaped high-growth/high-CapEx acceptance fixture;
 - official SEC EDGAR read-only adapter and data-contract tests;
 - official-source news deduplication and impact scoring;
-- conditional research-plan state machine;
-- Chinese daily brief and deduplicated Telegram outbox;
+- evidence-audited candidate and conditional-plan state machines;
+- Chinese daily brief and grouped, deduplicated, rate-limited Telegram outbox;
 - append-only/versioned local SQLite runtime store;
-- signal outcome calculations;
+- multi-horizon signal outcomes and benchmarked strategy performance;
 - health, readiness and provider status;
 - responsive read-only command centre;
 - protected mutating HTTP endpoints;
@@ -86,6 +88,9 @@ The exact V1 requirement-to-evidence map is maintained in
 [`docs/V1_ACCEPTANCE.md`](docs/V1_ACCEPTANCE.md). External SEC, Telegram,
 current-market data and protected production checks remain visibly pending
 until their real verification succeeds.
+
+The broader governing specification is tracked in
+[`docs/MASTER_SPEC_COVERAGE.md`](docs/MASTER_SPEC_COVERAGE.md).
 
 ## Data boundary
 

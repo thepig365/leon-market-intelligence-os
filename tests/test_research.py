@@ -12,4 +12,6 @@ def test_research_pack_lowers_confidence_without_news_or_valuation() -> None:
     assert pack.symbol == candidate.symbol
     assert pack.confidence < candidate.scores.confidence
     assert "No reproducible valuation is attached." in pack.risks
-    assert pack.model_version == "deterministic-research-pack-v1"
+    assert pack.model_version == "deterministic-research-pack-v2"
+    assert pack.company_profile
+    assert pack.valuation_summary == "No reproducible valuation is attached."

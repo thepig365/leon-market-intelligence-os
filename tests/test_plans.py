@@ -1,6 +1,11 @@
 import pytest
 
-from lmio.plans import ConditionalPlan, PlanState, transition
+from lmio.plans import (
+    ConditionalPlan,
+    PlanState,
+    transition,
+    transition_with_evidence,
+)
 
 
 def plan() -> ConditionalPlan:
@@ -19,9 +24,25 @@ def plan() -> ConditionalPlan:
 
 def test_valid_plan_transitions_are_explicit() -> None:
     watching = transition(plan(), PlanState.WATCHING)
-    confirmed = transition(watching, PlanState.CONFIRMED)
 
-    assert confirmed.state is PlanState.CONFIRMED
+    assert watching.state is PlanState.WAITING_CONFIRMATION
+
+    with pytest.raises(PermissionError, match="paper trading is disabled"):
+        transition(watching, PlanState.CONFIRMED)
+
+
+def test_transition_records_actor_reason_and_evidence() -> None:
+    updated, event = transition_with_evidence(
+        plan(),
+        PlanState.WAITING_CONFIRMATION,
+        actor="research-agent",
+        reason="Official filing requires price confirmation.",
+        evidence_urls=["https://www.sec.gov/example"],
+    )
+
+    assert updated.state is PlanState.WAITING_CONFIRMATION
+    assert event.previous_state is PlanState.DRAFT
+    assert event.actor == "research-agent"
 
 
 def test_terminal_plan_cannot_restart() -> None:

@@ -35,3 +35,29 @@ def test_mutating_api_is_closed_without_admin_key() -> None:
 
     assert response.status_code == 503
     assert "disabled" in response.json()["detail"]
+
+
+def test_read_only_research_api_surface_is_available() -> None:
+    paths = (
+        "/api/v1/candidates",
+        "/api/v1/research",
+        "/api/v1/news",
+        "/api/v1/ownership",
+        "/api/v1/plans",
+        "/api/v1/signals",
+        "/api/v1/performance",
+        "/api/v1/watchlists",
+    )
+
+    for path in paths:
+        response = request("GET", path)
+        assert response.status_code == 200, path
+
+
+def test_feedback_write_is_protected() -> None:
+    response = request(
+        "POST",
+        "/api/v1/feedback",
+    )
+
+    assert response.status_code == 503

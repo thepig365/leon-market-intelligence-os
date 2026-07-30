@@ -12,9 +12,15 @@ def test_daily_run_is_append_only_and_reproducible(tmp_path: Path) -> None:
     counts = service.store.counts()
 
     assert first["top_10"] == second["top_10"]
+    assert len(first["decision_cards"]) == 1
+    assert first["decision_cards"][0]["symbol"] == "META"
+    assert first["decision_cards"][0]["strict_fcf_value"] is not None
+    assert first["decision_cards"][0]["owner_earnings_value"] is not None
+    assert first["decision_cards"][0]["multi_model_value"] is not None
     assert counts["universe_runs"] == 2
     assert counts["screen_runs"] == 2
     assert counts["reports"] == 2
+    assert counts["candidate_transitions"] >= 2
     history = service.store.history_json("reports")
     assert len(history) == 2
     assert history[0]["payload"]["data_mode"] == "synthetic_replay"
@@ -39,3 +45,60 @@ def test_latest_candidates_produce_versioned_research_packs(tmp_path: Path) -> N
 
     assert len(packs) == 3
     assert service.store.counts()["research_packs"] == 3
+    meta = next(pack for pack in packs if pack["symbol"] == "META")
+    assert "Multi-model base" in str(meta["valuation_summary"])
+
+
+def test_master_spec_minimum_tables_exist(tmp_path: Path) -> None:
+    service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
+    required = {
+        "symbols",
+        "symbol_classifications",
+        "market_prices_daily",
+        "market_prices_intraday",
+        "market_indicators",
+        "fundamentals",
+        "financial_statements",
+        "earnings_events",
+        "earnings_estimates",
+        "earnings_revisions",
+        "news_events",
+        "news_sources",
+        "news_symbol_links",
+        "sec_filings",
+        "institutional_managers",
+        "institutional_holdings",
+        "insider_transactions",
+        "short_interest",
+        "options_flow",
+        "social_mentions",
+        "market_regimes",
+        "screen_definitions",
+        "screen_runs",
+        "screen_results",
+        "stock_candidates",
+        "candidate_evidence",
+        "valuation_runs",
+        "valuation_assumptions",
+        "valuation_results",
+        "signal_scores",
+        "trade_plans",
+        "trade_plan_transitions",
+        "paper_trades",
+        "paper_trade_events",
+        "telegram_deliveries",
+        "reports",
+        "strategy_performance",
+        "provider_health",
+        "system_events",
+        "user_feedback",
+    }
+    with service.store.connection() as connection:
+        actual = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+
+    assert required <= actual
