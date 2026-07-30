@@ -4,6 +4,7 @@ import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -348,6 +349,55 @@ class RuntimeStore:
                 "INSERT OR IGNORE INTO schema_versions(version) VALUES (?)",
                 (SCHEMA_VERSION,),
             )
+
+    def integrity_check(self) -> list[str]:
+        """Return SQLite integrity findings; a healthy store returns only ``ok``."""
+
+        with self.connection() as connection:
+            rows = connection.execute("PRAGMA integrity_check").fetchall()
+        return [str(row[0]) for row in rows]
+
+    def schema_versions(self) -> list[int]:
+        with self.connection() as connection:
+            rows = connection.execute(
+                "SELECT version FROM schema_versions ORDER BY version"
+            ).fetchall()
+        return [int(row[0]) for row in rows]
+
+    def backup_to(self, destination: str | Path) -> dict[str, Any]:
+        """Create and verify a non-destructive, consistent SQLite backup."""
+
+        if str(self.path) == ":memory:":
+            raise ValueError("in-memory stores cannot be backed up")
+        if not self.path.exists():
+            raise FileNotFoundError(self.path)
+        target = Path(destination)
+        if target.resolve() == self.path.resolve():
+            raise ValueError("backup destination must differ from the active store")
+        if target.exists():
+            raise FileExistsError(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source = sqlite3.connect(f"file:{self.path.resolve()}?mode=ro", uri=True)
+        backup = sqlite3.connect(target)
+        try:
+            source.backup(backup)
+        finally:
+            backup.close()
+            source.close()
+        verified = RuntimeStore(target)
+        findings = verified.integrity_check()
+        if findings != ["ok"]:
+            raise RuntimeError(f"backup integrity check failed: {findings}")
+        digest = sha256(target.read_bytes()).hexdigest()
+        return {
+            "source": str(self.path),
+            "backup": str(target),
+            "sha256": digest,
+            "bytes": target.stat().st_size,
+            "schema_versions": verified.schema_versions(),
+            "counts": verified.counts(),
+            "integrity": findings,
+        }
 
     def append_json(self, table: str, columns: dict[str, Any]) -> int:
         allowed = {

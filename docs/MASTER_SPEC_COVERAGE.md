@@ -60,6 +60,7 @@ external provider or protected production environment has been activated.
 | Live market/fundamental/revision provider | Pending approved provider/export | external gate |
 | Protected runtime deployment | Pending CEO approval and deployment target | production gate |
 | Operating, backup/recovery, deployment and troubleshooting guidance | Implemented | `OPERATIONS.md`, `BACKUP_RECOVERY.md`, `DEPLOYMENT.md` |
+| Consistent SQLite backup and integrity verification | Implemented | `RuntimeStore.backup_to`, `tests/test_backup.py` |
 
 ## Deferred by the governing V1 scope
 

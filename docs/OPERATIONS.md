@@ -40,6 +40,8 @@ uv run python -m lmio.cli demo-daily
 uv run python -m lmio.cli meta-acceptance
 ```
 
+Create a verified local backup using the procedure in `BACKUP_RECOVERY.md`.
+
 ## Provider failure
 
 - Keep the last successful snapshot with its timestamp.

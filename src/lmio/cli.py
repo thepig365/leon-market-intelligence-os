@@ -16,6 +16,7 @@ def main() -> None:
     parser.add_argument(
         "command",
         choices=(
+            "backup",
             "demo-daily",
             "import-csv",
             "meta-acceptance",
@@ -27,7 +28,11 @@ def main() -> None:
     parser.add_argument("--file", type=Path)
     args = parser.parse_args()
     service = LMIOService(get_settings())
-    if args.command == "demo-daily":
+    if args.command == "backup":
+        if args.file is None:
+            parser.error("--file is required for backup")
+        payload = service.store.backup_to(args.file)
+    elif args.command == "demo-daily":
         payload = service.run_demo_daily()
     elif args.command == "import-csv":
         if args.file is None:

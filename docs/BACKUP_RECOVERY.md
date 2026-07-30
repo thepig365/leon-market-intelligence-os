@@ -6,13 +6,21 @@ the selected deployment before it replaces this document.
 
 ## Backup
 
-1. Stop the LMIO process or otherwise ensure no writer is active.
-2. Record the application commit SHA and database migration version.
-3. Create a timestamped copy of `LMIO_DATABASE_PATH` in an access-controlled
-   backup location outside the working database path.
-4. Hash the backup and record its byte size.
-5. Open the copy read-only and run SQLite integrity verification.
-6. Keep the source database until the backup is independently verified.
+1. Record the application commit SHA.
+2. Run the consistent SQLite backup command to a new timestamped path:
+
+   ```bash
+   uv run python -m lmio.cli backup --file /approved/backup/path/lmio.sqlite3
+   ```
+
+3. Preserve the returned hash, byte size, schema versions, record counts and
+   integrity result with the operating evidence.
+4. Store the new file in an access-controlled location outside the working
+   database path.
+5. Keep the source database until the backup is independently verified.
+
+The command uses SQLite's online backup API and refuses to overwrite an
+existing file or use the active database as its destination.
 
 Never commit a database, credential, portfolio context or private research
 record to Git.

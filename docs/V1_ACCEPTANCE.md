@@ -22,7 +22,7 @@ external integrations that require credentials or a successful live read.
 | 14 | Missing data lowers confidence | scoring and research confidence policies | `tests/test_scoring_and_screens.py`, `tests/test_research.py` | Pass |
 | 15 | META reported-FCF vs normalised economics | reproducible acceptance fixture and CLI | `tests/test_valuation.py` | Pass |
 | 16 | Bounded Kimi/OpenAI research workers | manual Kimi packet; server-only OpenAI adapter disabled by default | `tests/test_research_workers.py` | Pass |
-| 17 | Operations, deployment and recovery guidance | protected runbooks in `docs/` | documentation review | Pass |
+| 17 | Operations, deployment and recovery | protected runbooks plus verified non-destructive SQLite backup | `tests/test_backup.py`; isolated recovery rehearsal | Pass |
 
 ## Verification commands
 
