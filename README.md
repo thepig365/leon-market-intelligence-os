@@ -119,9 +119,9 @@ LMIO never reports an integration as working merely because its configuration
 exists. A successful read-only verification is required.
 
 The exact V1 requirement-to-evidence map is maintained in
-[`docs/V1_ACCEPTANCE.md`](docs/V1_ACCEPTANCE.md). External SEC, Telegram,
-current-market data and protected production checks remain visibly pending
-until their real verification succeeds.
+[`docs/V1_ACCEPTANCE.md`](docs/V1_ACCEPTANCE.md). SEC and private Telegram
+delivery are verified. Current-market data and protected production checks
+remain visibly pending until their real verification succeeds.
 
 The broader governing specification is tracked in
 [`docs/MASTER_SPEC_COVERAGE.md`](docs/MASTER_SPEC_COVERAGE.md).

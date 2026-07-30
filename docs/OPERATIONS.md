@@ -56,6 +56,19 @@ Create a verified local backup using the procedure in `BACKUP_RECOVERY.md`.
   valid credentials are supplied.
 - Research-worker failure must fall back to deterministic research packs.
 
+## Local Telegram credential handling
+
+The approved local operator setup stores the active token and authorised chat
+identifier in macOS Keychain under dedicated LMIO service labels. Retrieve them
+only at process start and inject them as `TELEGRAM_BOT_TOKEN` and
+`TELEGRAM_CHAT_ID`. Do not copy either value into `.env`, source, logs,
+screenshots, Bayview OS or issue/PR text.
+
+The dedicated bot is private and cannot join groups. If a token appears in any
+visible output, revoke it immediately in BotFather, replace the Keychain item
+and repeat the private delivery check. A successful check must record delivery
+state and attempt count without recording the secret or chat identifier.
+
 ## Troubleshooting
 
 ### Startup rejects trading flags

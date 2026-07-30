@@ -13,7 +13,7 @@ external integrations that require credentials or a successful live read.
 | 5 | Three distinct valuation perspectives | Strict FCF, Normalised Owner Earnings and a component-audited multi-model view using applicable DCF/multiple inputs | `tests/test_valuation.py` | Pass |
 | 6 | Assumptions and confidence displayed | `src/lmio/valuation.py`, dashboard | `tests/test_valuation.py` | Pass |
 | 7 | Official news and SEC monitoring | SEC read-only adapter and monitor; official-source news contract | `tests/test_sec_provider.py`, `tests/test_sec_monitor.py`, `tests/test_news.py`; 2026-07-30 fair-access read | Pass |
-| 8 | Deduplicated Chinese Telegram reports with bounded retries | `src/lmio/telegram.py`, `src/lmio/reports.py` | `tests/test_telegram.py`, `tests/test_reports.py`, schema v5 upgrade tests | Real delivery verification pending |
+| 8 | Deduplicated Chinese Telegram reports with bounded retries | `src/lmio/telegram.py`, `src/lmio/reports.py` | `tests/test_telegram.py`, `tests/test_reports.py`, schema v5 upgrade tests; 2026-07-31 private live-delivery check | Pass |
 | 9 | System and provider health | `/health`, `/ready`, command centre | `tests/test_health.py`, `tests/test_api.py` | Pass |
 | 10 | Outcomes stored for evaluation | `src/lmio/outcomes.py`, versioned store | `tests/test_outcomes.py` | Pass |
 | 11 | Automated core-calculation tests | `tests/` | `uv run pytest` | Pass |
@@ -52,14 +52,25 @@ npm audit
 ## External acceptance gates
 
 These are deliberately not represented as complete until a successful
-read-only or delivery test is recorded:
+read-only or production test is recorded:
 
-1. Telegram delivery using an approved bot token and chat identifier.
-2. Current-market ingestion from an authorised export or approved provider.
-3. Protected production deployment and production smoke test.
+1. Current-market ingestion from an authorised export or approved provider.
+2. Protected production deployment and production smoke test.
 
 No paid service, provider subscription, external publication or trading
 capability is activated by V1.
+
+## Telegram live verification
+
+On 2026-07-31, the approved private `LMIO Alert Bot` delivered one Chinese
+non-trading test alert to Leon's private chat through the production Telegram
+Bot API. Group joining is disabled. The active bot token and authorised chat
+identifier are stored only in the local macOS Keychain and were injected into
+the test process; neither value is committed or recorded in Bayview OS.
+
+The delivery record is `sent` with one attempt. Repeating the identical
+operation did not create or send a second message, confirming live
+deduplication. All three trading flags remained false.
 
 ## SEC live verification
 

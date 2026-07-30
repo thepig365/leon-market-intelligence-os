@@ -28,6 +28,11 @@ the protected deployment gate and a new environment-level review.
 - SQLite backup refuses overwrite and verifies integrity before reporting
   success.
 - Production dependency audit reported no known published vulnerabilities.
+- The dedicated private Telegram bot has group joining disabled. Its active
+  token and authorised chat identifier are stored only in macOS Keychain and
+  were injected into a single test process. A previously displayed token was
+  revoked before use; no active Telegram secret is stored in source, logs,
+  Bayview OS or committed environment files.
 
 ## Threats and controls
 
@@ -43,11 +48,10 @@ the protected deployment gate and a new environment-level review.
 
 ## Open external gates
 
-1. Telegram credential handling and delivery verification.
-2. Authorised live-data rights, freshness and failure testing.
-3. Private production identity, network, TLS and platform configuration.
-4. Production backup storage, retention, encryption and recovery rehearsal.
-5. Exact desktop/mobile production acceptance testing.
+1. Authorised live-data rights, freshness and failure testing.
+2. Private production identity, network, TLS and platform configuration.
+3. Production backup storage, retention, encryption and recovery rehearsal.
+4. Exact desktop/mobile production acceptance testing.
 
 ## Review trigger
 

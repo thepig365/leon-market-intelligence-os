@@ -59,7 +59,7 @@ external provider or protected production environment has been activated.
 | Runtime APIs for reports, screens, valuations, candidates, research, news, ownership, plans, signals, performance, watchlists | Implemented | `main.py` |
 | Continuous, premarket, after-open, after-close, weekend jobs | Defined and read-only | `config/hermes_jobs.json` |
 | Telegram grouping, dedupe, rate-limit, queued release and bounded retry | Implemented | `telegram.py`, schema v5, tests |
-| Telegram live delivery | Pending credentials and end-to-end debug | external gate |
+| Telegram live delivery | Verified privately on 2026-07-31 | One Chinese non-trading alert sent; one attempt; identical repeat deduplicated; secrets remain Keychain-only |
 | Live market/fundamental/revision provider | Pending approved provider/export | external gate |
 | Protected runtime deployment | Pending CEO approval and deployment target | production gate |
 | Operating, backup/recovery, deployment and troubleshooting guidance | Implemented | `OPERATIONS.md`, `BACKUP_RECOVERY.md`, `DEPLOYMENT.md` |
@@ -77,6 +77,6 @@ external provider or protected production environment has been activated.
 
 Offline V1 can be declared code-complete only after Python and dashboard lint,
 type checks, tests, build/import, security checks, dependency audits and replay
-tests pass. Operational completion still requires Telegram, approved market-data
-and protected deployment debugging. Those external gates must be reported as
-pending rather than simulated.
+tests pass. Telegram private delivery is verified. Operational completion still
+requires approved market-data and protected deployment debugging. Those
+external gates must be reported as pending rather than simulated.

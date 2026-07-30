@@ -15,6 +15,9 @@ working evidence.
   checked, 33 deduplicated filing events and 92 ownership events stored locally.
 - Chinese reporting, Telegram outbox controls, valuation, research, conditional
   plans and outcome tracking.
+- Approved private Telegram live delivery on 2026-07-31: one Chinese
+  non-trading alert sent, one attempt recorded, and an identical repeat
+  suppressed by deduplication. Active credentials remain local-Keychain-only.
 - Startup enforcement that disables live trading and paper trading.
 - Python and dashboard tests, builds and dependency audits.
 
@@ -24,7 +27,6 @@ working evidence.
 | --- | --- | --- |
 | PostgreSQL/Supabase production persistence | SQLite is the verified development store; production target is not selected | Approved private target, migration rehearsal, backup and recovery test |
 | Hermes scheduled execution | Governed read-only job manifest exists | Approved private runtime and successful scheduled smoke run |
-| Telegram delivery | Outbox, grouping, dedupe and retry controls pass | Approved credentials and successful private delivery |
 | Current market data | Authorised CSV path passes | Approved provider/export and freshness/completeness evidence |
 | OpenAI/Kimi workers | Bounded, optional and disabled by default | Separate model/data approval and safe end-to-end test |
 | Protected deployment | Deployment and rollback runbooks exist | CEO-approved target, access control, smoke test and recovery evidence |
