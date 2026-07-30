@@ -1,0 +1,88 @@
+# Leon Market Intelligence OS
+
+LMIO is a Chinese-first, evidence-backed research and decision-support runtime
+for United States equities. It ranks research candidates, preserves their
+evidence, calculates three distinct valuation perspectives, produces quiet
+Chinese reports, and tracks what happened afterwards.
+
+Bayview OS remains the only project-memory and governance layer. LMIO stores
+detailed market runtime data and writes back only concise status, decision and
+evidence references. It does not create a duplicate project-memory system.
+
+## Current implemented capability
+
+- reproducible investable-universe rules;
+- Quality Growth Momentum and Earnings Revision Momentum screens;
+- independent quality, valuation, opportunity and timing scores;
+- explicit missing-data confidence reduction;
+- Top 10 and Top 3 ranking without forcing an opportunity;
+- Strict FCF, Normalised Owner Earnings and Multi-Model Fair Value views;
+- META-shaped high-growth/high-CapEx acceptance fixture;
+- official SEC EDGAR read-only adapter and data-contract tests;
+- official-source news deduplication and impact scoring;
+- conditional research-plan state machine;
+- Chinese daily brief and deduplicated Telegram outbox;
+- append-only/versioned local SQLite runtime store;
+- signal outcome calculations;
+- health, readiness and provider status;
+- responsive read-only command centre;
+- protected mutating HTTP endpoints;
+- structured audit logging with secret redaction.
+
+The bundled demonstration is synthetic replay data. It is clearly labelled and
+must not be interpreted as current market information.
+
+## Safety boundaries
+
+LMIO V1 has no broker adapter or order module. Startup is rejected if any of
+these values is true:
+
+- `CAN_TRADE`
+- `LIVE_TRADING_ENABLED`
+- `PAPER_TRADING_ENABLED`
+
+News, scores, Telegram, AI output and conditional plans cannot place an order.
+Changing this boundary is outside LMIO V1 and requires a separate Leon decision.
+
+## Local setup
+
+```bash
+uv sync --all-groups
+uv run pytest
+uv run ruff check .
+uv run uvicorn lmio.main:app --reload
+```
+
+Run the trusted local demonstrations:
+
+```bash
+uv run python -m lmio.cli demo-daily
+uv run python -m lmio.cli meta-acceptance
+uv run python -m lmio.cli status
+```
+
+Then open:
+
+- command centre: `http://127.0.0.1:8000/`
+- API reference: `http://127.0.0.1:8000/docs`
+- health: `http://127.0.0.1:8000/health`
+- readiness: `http://127.0.0.1:8000/ready`
+
+HTTP mutations require `LMIO_ADMIN_API_KEY` and the `X-LMIO-Key` request
+header. The trusted local CLI does not expose a remote mutation surface.
+
+## Optional integrations
+
+- `SEC_USER_AGENT`: a fair-access identity required by the SEC;
+- `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`: priority alert delivery;
+- `LMIO_ADMIN_API_KEY`: protects mutating HTTP endpoints.
+
+LMIO never reports an integration as working merely because its configuration
+exists. A successful read-only verification is required.
+
+## Data boundary
+
+The local versioned SQLite store is the development default. Financial,
+screening, valuation, report and outcome runs append new records; recalculation
+does not silently overwrite history. Production PostgreSQL/Supabase activation
+and deployment remain protected steps.

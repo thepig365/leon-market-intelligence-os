@@ -1,0 +1,159 @@
+"""Versioned SQLite persistence for local LMIO runtime evidence."""
+
+import json
+import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any
+
+SCHEMA_VERSION = 1
+MIGRATION = """
+CREATE TABLE IF NOT EXISTS schema_versions (
+    version INTEGER PRIMARY KEY,
+    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS universe_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    policy_version TEXT NOT NULL,
+    input_count INTEGER NOT NULL,
+    investable_count INTEGER NOT NULL,
+    input_hash TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS screen_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    calculation_version TEXT NOT NULL,
+    universe_run_id INTEGER,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (universe_run_id) REFERENCES universe_runs(id)
+);
+CREATE TABLE IF NOT EXISTS valuation_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    calculation_version TEXT NOT NULL,
+    input_payload TEXT NOT NULL,
+    result_payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS news_events (
+    fingerprint TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_type TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS signal_outcomes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    strategy TEXT NOT NULL,
+    signal_date TEXT NOT NULL,
+    horizon TEXT NOT NULL,
+    return_pct REAL,
+    max_adverse_excursion_pct REAL,
+    max_favourable_excursion_pct REAL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS telegram_deliveries (
+    dedupe_key TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    provider_message_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS system_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+
+class RuntimeStore:
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+
+    @contextmanager
+    def connection(self) -> Iterator[sqlite3.Connection]:
+        if str(self.path) != ":memory:":
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+        connection = sqlite3.connect(self.path)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        try:
+            yield connection
+            connection.commit()
+        finally:
+            connection.close()
+
+    def migrate(self) -> None:
+        with self.connection() as connection:
+            connection.executescript(MIGRATION)
+            connection.execute(
+                "INSERT OR IGNORE INTO schema_versions(version) VALUES (?)",
+                (SCHEMA_VERSION,),
+            )
+
+    def append_json(self, table: str, columns: dict[str, Any]) -> int:
+        allowed = {
+            "universe_runs",
+            "screen_runs",
+            "valuation_runs",
+            "reports",
+            "signal_outcomes",
+            "system_events",
+        }
+        if table not in allowed:
+            raise ValueError(f"unsupported append table: {table}")
+        keys = list(columns)
+        placeholders = ", ".join("?" for _ in keys)
+        values = [
+            (
+                json.dumps(value, sort_keys=True, default=str)
+                if isinstance(value, dict | list)
+                else value
+            )
+            for value in columns.values()
+        ]
+        with self.connection() as connection:
+            cursor = connection.execute(
+                f"INSERT INTO {table} ({', '.join(keys)}) VALUES ({placeholders})",
+                values,
+            )
+            return int(cursor.lastrowid)
+
+    def latest_json(self, table: str) -> dict[str, Any] | None:
+        allowed = {"universe_runs", "screen_runs", "reports"}
+        if table not in allowed:
+            raise ValueError(f"unsupported latest table: {table}")
+        with self.connection() as connection:
+            row = connection.execute(
+                f"SELECT payload FROM {table} ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        return json.loads(row["payload"]) if row else None
+
+    def counts(self) -> dict[str, int]:
+        tables = (
+            "universe_runs",
+            "screen_runs",
+            "valuation_runs",
+            "news_events",
+            "reports",
+            "signal_outcomes",
+            "telegram_deliveries",
+            "system_events",
+        )
+        with self.connection() as connection:
+            return {
+                table: int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+                for table in tables
+            }
