@@ -31,7 +31,8 @@ evidence references. It does not create a duplicate project-memory system.
 - append-only/versioned local SQLite runtime store;
 - multi-horizon signal outcomes and benchmarked strategy performance;
 - health, readiness and provider status;
-- responsive read-only command centre;
+- responsive read-only FastAPI fallback command centre;
+- Chinese-first Next.js/TypeScript dashboard with all 13 required sections;
 - protected mutating HTTP endpoints;
 - structured audit logging with secret redaction;
 - optional evidence-only OpenAI Responses API adapter, disabled by default;
@@ -85,10 +86,23 @@ and the export's provenance remain required.
 
 Then open:
 
-- command centre: `http://127.0.0.1:8000/`
+- FastAPI fallback command centre: `http://127.0.0.1:8000/`
 - API reference: `http://127.0.0.1:8000/docs`
 - health: `http://127.0.0.1:8000/health`
 - readiness: `http://127.0.0.1:8000/ready`
+
+Run the required Next.js dashboard in a second terminal:
+
+```bash
+cd apps/dashboard
+cp .env.example .env.local
+npm ci
+npm run dev
+```
+
+Then open `http://127.0.0.1:3000`. The dashboard performs server-side,
+read-only requests to FastAPI and never receives provider or administrator
+credentials.
 
 HTTP mutations require `LMIO_ADMIN_API_KEY` and the `X-LMIO-Key` request
 header. The trusted local CLI does not expose a remote mutation surface.
@@ -119,6 +133,8 @@ Operator references:
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 - [`docs/RESEARCH_WORKERS.md`](docs/RESEARCH_WORKERS.md)
 - [`docs/SECURITY_REVIEW.md`](docs/SECURITY_REVIEW.md)
+- [`docs/COMPLETION_AUDIT.md`](docs/COMPLETION_AUDIT.md)
+- [`apps/dashboard/README.md`](apps/dashboard/README.md)
 
 ## Data boundary
 

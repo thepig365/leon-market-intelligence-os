@@ -11,6 +11,7 @@ because it introduces external access, credentials and operational data.
 - Environment values are stored in the platform secret manager, never Git.
 - The database and recovery method are selected and rehearsed.
 - Data-provider rights and usage limits are documented.
+- The runtime and dashboard share an approved private access boundary.
 
 ## Required configuration
 
@@ -26,6 +27,10 @@ Set `LMIO_ADMIN_API_KEY` for protected mutations. Optional SEC, Telegram and
 OpenAI values remain blank until each integration is separately approved and
 debugged. `LMIO_OPENAI_MODEL` must be an explicitly approved model snapshot.
 
+Set `LMIO_API_BASE_URL` only in the dashboard server environment. It must point
+to the private LMIO runtime. Do not expose `LMIO_ADMIN_API_KEY` or provider
+credentials to the dashboard or any `NEXT_PUBLIC_*` variable.
+
 ## Release gate
 
 Run:
@@ -36,6 +41,14 @@ uv run ruff check .
 uv run ruff format --check .
 uv run pytest
 git diff --check
+
+cd apps/dashboard
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm audit
 ```
 
 Also complete a dependency audit, schema migration rehearsal, backup/recovery

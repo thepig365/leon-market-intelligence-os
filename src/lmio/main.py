@@ -137,10 +137,12 @@ def premarket_brief() -> dict[str, Any]:
 
 
 @app.get("/api/v1/screens/latest", tags=["research"])
-def latest_screen() -> dict[str, Any]:
+def latest_screen() -> list[dict[str, Any]]:
     screen = get_service().store.latest_json("screen_runs")
     if screen is None:
         raise HTTPException(status_code=404, detail="No screen run exists.")
+    if not isinstance(screen, list):
+        raise HTTPException(status_code=500, detail="Stored screen run is malformed.")
     return screen
 
 

@@ -11,6 +11,11 @@ Bayview OS
 LMIO runtime
   provider snapshots / universe / screens / evidence / valuations
   scores / conditional plans / alerts / outcomes / health
+                              |
+                 read-only server-side HTTP
+                              |
+LMIO dashboard
+  Next.js / TypeScript / 13 governed views / no browser credentials
 ```
 
 Bayview OS is canonical for project memory. LMIO is canonical for detailed
@@ -87,3 +92,14 @@ DRAFT -> WAITING_CONFIRMATION -> PAPER_READY -> PAPER_OPEN
 
 Every persisted transition records time, actor, reason, previous/new state and
 evidence URLs.
+
+## Dashboard
+
+`apps/dashboard` is the primary V1 operator interface. It renders the 13
+governed views from the Master Specification and reads LMIO through
+server-side HTTP. Provider credentials and the administrator API key never
+enter browser JavaScript. Missing or unavailable runtime data is shown as an
+explicit safe-degradation state rather than invented content.
+
+The minimal HTML routes served by FastAPI remain a diagnostic fallback for
+runtime inspection. They are not the specification-aligned primary dashboard.

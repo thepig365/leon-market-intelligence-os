@@ -55,7 +55,7 @@ external provider or protected production environment has been activated.
 | SPY, QQQ, IWM, VIX, breadth | Implemented | `reports.py` |
 | Yields, DXY, USDJPY, oil, gold, sectors, macro events | Implemented | `reports.py` |
 | Supporting/contrary evidence and strategy controls | Implemented | `MarketRegime` |
-| 13 dashboard routes | Implemented | `main.py`, API tests |
+| 13 dashboard routes | Implemented | `apps/dashboard`, dashboard verification and build |
 | Runtime APIs for reports, screens, valuations, candidates, research, news, ownership, plans, signals, performance, watchlists | Implemented | `main.py` |
 | Continuous, premarket, after-open, after-close, weekend jobs | Defined and read-only | `config/hermes_jobs.json` |
 | Telegram grouping, dedupe, rate-limit, queued release and bounded retry | Implemented | `telegram.py`, schema v5, tests |
@@ -75,8 +75,8 @@ external provider or protected production environment has been activated.
 
 ## Completion rule
 
-Offline V1 can be declared code-complete only after lint, tests, build/import,
-security checks, dependency audit and replay tests pass. Operational completion
-also requires external SEC, Telegram, approved market-data and protected
-deployment debugging. Those external gates must be reported as pending rather
-than simulated.
+Offline V1 can be declared code-complete only after Python and dashboard lint,
+type checks, tests, build/import, security checks, dependency audits and replay
+tests pass. Operational completion also requires external SEC, Telegram,
+approved market-data and protected deployment debugging. Those external gates
+must be reported as pending rather than simulated.

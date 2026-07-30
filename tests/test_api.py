@@ -65,6 +65,27 @@ def test_read_only_research_api_surface_is_available() -> None:
         assert response.status_code == 200, path
 
 
+def test_latest_screen_returns_persisted_candidate_list(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
+    service.store.append_json(
+        "screen_runs",
+        {
+            "calculation_version": "screens-v1",
+            "universe_run_id": None,
+            "payload": [{"symbol": "TEST", "strategy": "quality_growth_momentum"}],
+        },
+    )
+    monkeypatch.setattr("lmio.main.get_service", lambda: service)
+
+    response = request("GET", "/api/v1/screens/latest")
+
+    assert response.status_code == 200
+    assert response.json() == [{"symbol": "TEST", "strategy": "quality_growth_momentum"}]
+
+
 def test_feedback_write_is_protected() -> None:
     response = request(
         "POST",
