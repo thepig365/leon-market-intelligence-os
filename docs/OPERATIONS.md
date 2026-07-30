@@ -50,6 +50,10 @@ Create a verified local backup using the procedure in `BACKUP_RECOVERY.md`.
 - Do not mark configuration as ready merely because credentials exist.
 - Telegram failure must preserve the outbox and must not interrupt core
   research.
+- Each Telegram invocation makes at most one network attempt. Failed deliveries
+  may be retried by a later invocation, up to three total attempts. Messages
+  queued before credentials are configured become eligible for delivery after
+  valid credentials are supplied.
 - Research-worker failure must fall back to deterministic research packs.
 
 ## Troubleshooting

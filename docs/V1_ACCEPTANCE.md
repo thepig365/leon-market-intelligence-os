@@ -13,7 +13,7 @@ external integrations that require credentials or a successful live read.
 | 5 | Three distinct valuation perspectives | Strict FCF, Normalised Owner Earnings and a component-audited multi-model view using applicable DCF/multiple inputs | `tests/test_valuation.py` | Pass |
 | 6 | Assumptions and confidence displayed | `src/lmio/valuation.py`, dashboard | `tests/test_valuation.py` | Pass |
 | 7 | Official news and SEC monitoring | SEC read-only adapter and monitor; official-source news contract | `tests/test_sec_provider.py`, `tests/test_sec_monitor.py`, `tests/test_news.py` | Live verification pending |
-| 8 | Deduplicated Chinese Telegram reports | `src/lmio/telegram.py`, `src/lmio/reports.py` | `tests/test_telegram.py`, `tests/test_reports.py` | Delivery verification pending |
+| 8 | Deduplicated Chinese Telegram reports with bounded retries | `src/lmio/telegram.py`, `src/lmio/reports.py` | `tests/test_telegram.py`, `tests/test_reports.py`, schema v5 upgrade tests | Real delivery verification pending |
 | 9 | System and provider health | `/health`, `/ready`, command centre | `tests/test_health.py`, `tests/test_api.py` | Pass |
 | 10 | Outcomes stored for evaluation | `src/lmio/outcomes.py`, versioned store | `tests/test_outcomes.py` | Pass |
 | 11 | Automated core-calculation tests | `tests/` | `uv run pytest` | Pass |

@@ -8,7 +8,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 MIGRATION = """
 CREATE TABLE IF NOT EXISTS schema_versions (
     version INTEGER PRIMARY KEY,
@@ -67,6 +67,8 @@ CREATE TABLE IF NOT EXISTS telegram_deliveries (
     status TEXT NOT NULL,
     payload TEXT NOT NULL,
     provider_message_id TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_attempt_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS system_events (
@@ -350,6 +352,30 @@ class RuntimeStore:
     def migrate(self) -> None:
         with self.connection() as connection:
             connection.executescript(MIGRATION)
+            telegram_columns = {
+                str(row["name"])
+                for row in connection.execute("PRAGMA table_info(telegram_deliveries)").fetchall()
+            }
+            if "attempt_count" not in telegram_columns:
+                connection.execute(
+                    """
+                    ALTER TABLE telegram_deliveries
+                    ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0
+                    """
+                )
+            if "last_attempt_at" not in telegram_columns:
+                connection.execute(
+                    "ALTER TABLE telegram_deliveries ADD COLUMN last_attempt_at TEXT"
+                )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO schema_versions(version)
+                SELECT 4
+                WHERE EXISTS (
+                    SELECT 1 FROM schema_versions WHERE version = 3
+                )
+                """
+            )
             connection.execute(
                 "INSERT OR IGNORE INTO schema_versions(version) VALUES (?)",
                 (SCHEMA_VERSION,),

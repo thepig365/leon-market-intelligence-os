@@ -24,7 +24,7 @@ def test_backup_is_consistent_verified_and_non_destructive(tmp_path: Path) -> No
     assert active_path.exists()
     assert backup_path.exists()
     assert manifest["integrity"] == ["ok"]
-    assert manifest["schema_versions"] == [4]
+    assert manifest["schema_versions"] == [5]
     assert manifest["counts"] == store.counts()
     assert manifest["sha256"]
     assert manifest["bytes"] > 0
@@ -51,7 +51,7 @@ def test_backup_refuses_missing_or_memory_source(tmp_path: Path) -> None:
         RuntimeStore(":memory:").backup_to(tmp_path / "backup.sqlite3")
 
 
-def test_schema_four_upgrades_an_existing_schema_three_store(tmp_path: Path) -> None:
+def test_schema_five_upgrades_an_existing_schema_three_store(tmp_path: Path) -> None:
     path = tmp_path / "legacy.sqlite3"
     connection = sqlite3.connect(path)
     connection.executescript(
@@ -68,9 +68,51 @@ def test_schema_four_upgrades_an_existing_schema_three_store(tmp_path: Path) -> 
     store = RuntimeStore(path)
     store.migrate()
 
-    assert store.schema_versions() == [3, 4]
+    assert store.schema_versions() == [3, 4, 5]
     with store.connection() as upgraded:
         row = upgraded.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'ingestion_dedup'"
         ).fetchone()
     assert row is not None
+
+
+def test_schema_five_adds_telegram_retry_fields_to_schema_four(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "legacy-v4.sqlite3"
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        """
+        CREATE TABLE schema_versions (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO schema_versions(version) VALUES (4);
+        CREATE TABLE telegram_deliveries (
+            dedupe_key TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            provider_message_id TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO telegram_deliveries(dedupe_key, status, payload)
+        VALUES ('legacy', 'failed', '{}');
+        """
+    )
+    connection.close()
+
+    store = RuntimeStore(path)
+    store.migrate()
+
+    assert store.schema_versions() == [4, 5]
+    with store.connection() as upgraded:
+        row = upgraded.execute(
+            """
+            SELECT attempt_count, last_attempt_at
+            FROM telegram_deliveries
+            WHERE dedupe_key = 'legacy'
+            """
+        ).fetchone()
+    assert row is not None
+    assert row["attempt_count"] == 0
+    assert row["last_attempt_at"] is None

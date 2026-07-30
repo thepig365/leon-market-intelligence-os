@@ -58,7 +58,7 @@ external provider or protected production environment has been activated.
 | 13 dashboard routes | Implemented | `main.py`, API tests |
 | Runtime APIs for reports, screens, valuations, candidates, research, news, ownership, plans, signals, performance, watchlists | Implemented | `main.py` |
 | Continuous, premarket, after-open, after-close, weekend jobs | Defined and read-only | `config/hermes_jobs.json` |
-| Telegram grouping, dedupe, rate-limit and safe failure | Implemented | `telegram.py`, tests |
+| Telegram grouping, dedupe, rate-limit, queued release and bounded retry | Implemented | `telegram.py`, schema v5, tests |
 | Telegram live delivery | Pending credentials and end-to-end debug | external gate |
 | Live market/fundamental/revision provider | Pending approved provider/export | external gate |
 | Protected runtime deployment | Pending CEO approval and deployment target | production gate |
