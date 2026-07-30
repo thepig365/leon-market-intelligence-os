@@ -13,6 +13,12 @@ from .contracts import (
     ResearchWorker,
 )
 from .csv_snapshot import CSVSnapshotProvider
+from .research import (
+    OpenAIResearchWorker,
+    ResearchSynthesis,
+    build_kimi_manual_packet,
+    validate_kimi_manual_output,
+)
 
 __all__ = [
     "CSVSnapshotProvider",
@@ -24,8 +30,12 @@ __all__ = [
     "InstitutionalProvider",
     "MarketDataProvider",
     "NewsProvider",
+    "OpenAIResearchWorker",
     "Provider",
     "ProviderHealth",
     "ProviderState",
+    "ResearchSynthesis",
     "ResearchWorker",
+    "build_kimi_manual_packet",
+    "validate_kimi_manual_output",
 ]

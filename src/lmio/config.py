@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     )
     telegram_bot_token: str = Field(default="", validation_alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str = Field(default="", validation_alias="TELEGRAM_CHAT_ID")
+    openai_api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="OPENAI_API_KEY",
+    )
+    openai_model: str = Field(default="", validation_alias="LMIO_OPENAI_MODEL")
     admin_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="LMIO_ADMIN_API_KEY")
 
     @model_validator(mode="after")
@@ -86,6 +91,9 @@ class Settings(BaseSettings):
             "sec_configured": bool(self.sec_user_agent.strip()),
             "telegram_configured": bool(
                 self.telegram_bot_token.strip() and self.telegram_chat_id.strip()
+            ),
+            "openai_research_configured": bool(
+                self.openai_api_key.get_secret_value() and self.openai_model.strip()
             ),
             "admin_api_key_configured": bool(self.admin_api_key.get_secret_value()),
         }

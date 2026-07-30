@@ -30,6 +30,8 @@ external provider or protected production environment has been activated.
 | Top 10 required fields | Implemented | `ScreenCandidate`, reports |
 | Top 3 decision cards | Implemented | `DecisionCard`, reports |
 | 15-field research package | Implemented | `research.py` |
+| Kimi research worker | Implemented as bounded manual workflow | `providers/research.py`, `RESEARCH_WORKERS.md` |
+| OpenAI synthesis adapter | Implemented, disabled pending approved configuration and live debug | `providers/research.py`, tests |
 
 ## State, evidence and learning
 
@@ -57,6 +59,7 @@ external provider or protected production environment has been activated.
 | Telegram live delivery | Pending credentials and end-to-end debug | external gate |
 | Live market/fundamental/revision provider | Pending approved provider/export | external gate |
 | Protected runtime deployment | Pending CEO approval and deployment target | production gate |
+| Operating, backup/recovery, deployment and troubleshooting guidance | Implemented | `OPERATIONS.md`, `BACKUP_RECOVERY.md`, `DEPLOYMENT.md` |
 
 ## Deferred by the governing V1 scope
 

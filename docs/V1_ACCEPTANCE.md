@@ -21,6 +21,8 @@ external integrations that require credentials or a successful live read.
 | 13 | Secrets protected | environment-only secrets, redacted audit, protected mutation API | `tests/test_audit.py`, `tests/test_security.py` | Pass |
 | 14 | Missing data lowers confidence | scoring and research confidence policies | `tests/test_scoring_and_screens.py`, `tests/test_research.py` | Pass |
 | 15 | META reported-FCF vs normalised economics | reproducible acceptance fixture and CLI | `tests/test_valuation.py` | Pass |
+| 16 | Bounded Kimi/OpenAI research workers | manual Kimi packet; server-only OpenAI adapter disabled by default | `tests/test_research_workers.py` | Pass |
+| 17 | Operations, deployment and recovery guidance | protected runbooks in `docs/` | documentation review | Pass |
 
 ## Verification commands
 

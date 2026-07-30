@@ -30,6 +30,9 @@ evidence references. It does not create a duplicate project-memory system.
 - responsive read-only command centre;
 - protected mutating HTTP endpoints;
 - structured audit logging with secret redaction.
+- optional evidence-only OpenAI Responses API adapter, disabled by default;
+- documented human-mediated Kimi research workflow;
+- protected deployment, operations and backup/recovery runbooks;
 - private GitHub quality checks for lint, formatting, tests and dependency
   vulnerabilities.
 
@@ -79,6 +82,8 @@ header. The trusted local CLI does not expose a remote mutation surface.
 
 - `SEC_USER_AGENT`: a fair-access identity required by the SEC;
 - `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`: priority alert delivery;
+- `OPENAI_API_KEY` and `LMIO_OPENAI_MODEL`: optional server-side,
+  evidence-only research synthesis; both are blank and inactive by default;
 - `LMIO_ADMIN_API_KEY`: protects mutating HTTP endpoints.
 
 LMIO never reports an integration as working merely because its configuration
@@ -91,6 +96,13 @@ until their real verification succeeds.
 
 The broader governing specification is tracked in
 [`docs/MASTER_SPEC_COVERAGE.md`](docs/MASTER_SPEC_COVERAGE.md).
+
+Operator references:
+
+- [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
+- [`docs/BACKUP_RECOVERY.md`](docs/BACKUP_RECOVERY.md)
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
+- [`docs/RESEARCH_WORKERS.md`](docs/RESEARCH_WORKERS.md)
 
 ## Data boundary
 
