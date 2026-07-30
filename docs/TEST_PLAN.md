@@ -17,6 +17,8 @@ Required automated coverage:
 - false trading flags and rejected activation;
 - secret redaction and protected mutations;
 - health, readiness and dashboard routes.
+- Hermes jobs remain read-only and contain no order or trading command;
+- the locked dependency set has no known published vulnerability.
 
 Provider read-only verification, historical event replay, responsive browser
 checks and production acceptance tests are recorded separately because they

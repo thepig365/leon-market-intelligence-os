@@ -28,6 +28,8 @@ evidence references. It does not create a duplicate project-memory system.
 - responsive read-only command centre;
 - protected mutating HTTP endpoints;
 - structured audit logging with secret redaction.
+- private GitHub quality checks for lint, formatting, tests and dependency
+  vulnerabilities.
 
 The bundled demonstration is synthetic replay data. It is clearly labelled and
 must not be interpreted as current market information.
@@ -79,6 +81,11 @@ header. The trusted local CLI does not expose a remote mutation surface.
 
 LMIO never reports an integration as working merely because its configuration
 exists. A successful read-only verification is required.
+
+The exact V1 requirement-to-evidence map is maintained in
+[`docs/V1_ACCEPTANCE.md`](docs/V1_ACCEPTANCE.md). External SEC, Telegram,
+current-market data and protected production checks remain visibly pending
+until their real verification succeeds.
 
 ## Data boundary
 
