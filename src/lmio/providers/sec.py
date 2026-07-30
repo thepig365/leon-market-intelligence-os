@@ -15,6 +15,13 @@ MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
 Transport = Callable[[str, dict[str, str]], bytes]
 
 
+def _is_safe_document_path(value: str) -> bool:
+    parts = value.split("/")
+    return bool(value) and all(
+        part not in {"", ".", ".."} and re.fullmatch(r"[A-Za-z0-9_.-]+", part) for part in parts
+    )
+
+
 def _urlopen_transport(url: str, headers: dict[str, str]) -> bytes:
     with request.urlopen(request.Request(url, headers=headers), timeout=15) as response:
         return response.read()
@@ -36,7 +43,7 @@ class SECProvider(Provider):
             )
         try:
             payload = self._get("/submissions/CIK0000320193.json")
-            if payload.get("cik") != "320193":
+            if str(payload.get("cik")).lstrip("0") != "320193":
                 return ProviderHealth(
                     provider=self.name,
                     state=ProviderState.DEGRADED,
@@ -98,8 +105,11 @@ class SECProvider(Provider):
         form = str(filing["form"]).upper()
         if not form.startswith("13F"):
             primary = str(filing["primary_document"])
-            if not re.fullmatch(r"[A-Za-z0-9_.-]+", primary):
+            if not _is_safe_document_path(primary):
                 raise ValueError("SEC primary document name is invalid")
+            parts = primary.split("/")
+            if len(parts) == 2 and parts[0].lower().startswith("xsl"):
+                primary = parts[1]
             return f"{base_url}/{primary}"
 
         index = json.loads(self.fetch_document(f"{base_url}/index.json"))
@@ -130,7 +140,6 @@ class SECProvider(Provider):
             f"{SEC_BASE_URL}{path}",
             {
                 "User-Agent": self.user_agent,
-                "Accept-Encoding": "gzip, deflate",
                 "Host": "data.sec.gov",
             },
         )

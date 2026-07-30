@@ -77,6 +77,6 @@ external provider or protected production environment has been activated.
 
 Offline V1 can be declared code-complete only after Python and dashboard lint,
 type checks, tests, build/import, security checks, dependency audits and replay
-tests pass. Operational completion also requires external SEC, Telegram,
-approved market-data and protected deployment debugging. Those external gates
-must be reported as pending rather than simulated.
+tests pass. Operational completion still requires Telegram, approved market-data
+and protected deployment debugging. Those external gates must be reported as
+pending rather than simulated.

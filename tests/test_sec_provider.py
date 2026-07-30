@@ -40,6 +40,23 @@ def test_sec_contract_normalises_recent_filings() -> None:
         }
     ]
     assert captured["headers"]["User-Agent"] == "LMIO research admin@example.test"
+    assert "Accept-Encoding" not in captured["headers"]
+
+
+def test_sec_health_accepts_numeric_and_zero_padded_cik_contracts() -> None:
+    for cik in (320193, "0000320193"):
+        payload = {"cik": cik}
+
+        def transport(
+            _url: str,
+            _headers: dict[str, str],
+            payload: dict[str, int | str] = payload,
+        ) -> bytes:
+            return json.dumps(payload).encode()
+
+        provider = SECProvider("LMIO research admin@example.test", transport)
+
+        assert provider.health().state is ProviderState.READY
 
 
 def test_sec_contract_rejects_missing_fields() -> None:
@@ -85,6 +102,35 @@ def test_sec_document_fetch_uses_fair_access_identity() -> None:
             "Host": "www.sec.gov",
         },
     }
+
+
+def test_sec_document_url_resolves_official_xsl_display_path_to_raw_xml() -> None:
+    provider = SECProvider("LMIO research admin@example.test", lambda *_: b"")
+    filing = {
+        "cik": "0000320193",
+        "accession_number": "0001140361-26-025622",
+        "form": "4",
+        "primary_document": "xslF345X06/form4.xml",
+    }
+
+    assert provider.ownership_document_url(filing).endswith("/000114036126025622/form4.xml")
+
+
+def test_sec_document_url_rejects_path_traversal() -> None:
+    provider = SECProvider("LMIO research admin@example.test", lambda *_: b"")
+    filing = {
+        "cik": "0000320193",
+        "accession_number": "0001140361-26-025622",
+        "form": "4",
+        "primary_document": "../form4.xml",
+    }
+
+    try:
+        provider.ownership_document_url(filing)
+    except ValueError as error:
+        assert "invalid" in str(error)
+    else:
+        raise AssertionError("SEC document path traversal should fail closed")
 
 
 def test_13f_information_table_url_is_resolved_from_official_directory() -> None:

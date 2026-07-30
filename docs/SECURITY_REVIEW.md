@@ -43,12 +43,11 @@ the protected deployment gate and a new environment-level review.
 
 ## Open external gates
 
-1. SEC privacy identity approval and successful fair-access read.
-2. Telegram credential handling and delivery verification.
-3. Authorised live-data rights, freshness and failure testing.
-4. Private production identity, network, TLS and platform configuration.
-5. Production backup storage, retention, encryption and recovery rehearsal.
-6. Exact desktop/mobile production acceptance testing.
+1. Telegram credential handling and delivery verification.
+2. Authorised live-data rights, freshness and failure testing.
+3. Private production identity, network, TLS and platform configuration.
+4. Production backup storage, retention, encryption and recovery rehearsal.
+5. Exact desktop/mobile production acceptance testing.
 
 ## Review trigger
 
