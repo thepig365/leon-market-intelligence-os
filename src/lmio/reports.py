@@ -11,6 +11,7 @@ def classify_regime(
     iwm_return_pct: float,
     vix: float,
     breadth_pct: float,
+    usd_jpy_change_pct: float | None = None,
 ) -> MarketRegime:
     evidence = [
         f"SPY {spy_return_pct:+.2f}%",
@@ -19,8 +20,13 @@ def classify_regime(
         f"VIX {vix:.1f}",
         f"上涨广度 {breadth_pct:.1f}%",
     ]
+    if usd_jpy_change_pct is not None:
+        evidence.append(f"USD/JPY {usd_jpy_change_pct:+.2f}%")
     average = (spy_return_pct + qqq_return_pct + iwm_return_pct) / 3
-    if vix >= 30:
+    if usd_jpy_change_pct is not None and usd_jpy_change_pct <= -2:
+        label = "Macro Shock"
+        confidence = 0.85
+    elif vix >= 30:
         label = "High Volatility"
         confidence = 0.9
     elif average <= -1 and breadth_pct < 40:

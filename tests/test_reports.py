@@ -19,3 +19,10 @@ def test_report_deduplicates_symbols_and_is_chinese() -> None:
     assert "盘前研究简报" in report.message_zh
     assert "不会执行交易" in report.message_zh
     assert report.warnings
+
+
+def test_rapid_yen_strengthening_preserves_macro_shock_hypothesis() -> None:
+    regime = classify_regime(0, 0, 0, 20, 50, usd_jpy_change_pct=-2.5)
+
+    assert regime.label == "Macro Shock"
+    assert "USD/JPY -2.50%" in regime.evidence
