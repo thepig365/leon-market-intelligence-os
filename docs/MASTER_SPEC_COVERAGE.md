@@ -61,6 +61,7 @@ external provider or protected production environment has been activated.
 | Protected runtime deployment | Pending CEO approval and deployment target | production gate |
 | Operating, backup/recovery, deployment and troubleshooting guidance | Implemented | `OPERATIONS.md`, `BACKUP_RECOVERY.md`, `DEPLOYMENT.md` |
 | Consistent SQLite backup and integrity verification | Implemented | `RuntimeStore.backup_to`, `tests/test_backup.py` |
+| Offline V1 security review | Implemented; production review still gated | `SECURITY_REVIEW.md`, security and audit tests |
 
 ## Deferred by the governing V1 scope
 

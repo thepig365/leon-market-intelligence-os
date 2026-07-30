@@ -103,6 +103,7 @@ Operator references:
 - [`docs/BACKUP_RECOVERY.md`](docs/BACKUP_RECOVERY.md)
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 - [`docs/RESEARCH_WORKERS.md`](docs/RESEARCH_WORKERS.md)
+- [`docs/SECURITY_REVIEW.md`](docs/SECURITY_REVIEW.md)
 
 ## Data boundary
 
