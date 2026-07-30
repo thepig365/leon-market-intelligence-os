@@ -29,3 +29,13 @@ def test_meta_valuation_is_versioned(tmp_path: Path) -> None:
     assert service.store.counts()["valuation_runs"] == 1
     assert service.store.counts()["research_packs"] == 0
     assert service.store.counts()["conditional_plans"] == 0
+
+
+def test_latest_candidates_produce_versioned_research_packs(tmp_path: Path) -> None:
+    service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
+    service.run_demo_daily()
+
+    packs = service.research_latest(limit=3)
+
+    assert len(packs) == 3
+    assert service.store.counts()["research_packs"] == 3

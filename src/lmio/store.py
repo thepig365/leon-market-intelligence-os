@@ -223,3 +223,12 @@ class RuntimeStore:
                 (fingerprint, json.dumps(payload, sort_keys=True, default=str)),
             )
             return cursor.rowcount == 1
+
+    def news_payloads(self, limit: int = 500) -> list[dict[str, Any]]:
+        bounded_limit = max(1, min(limit, 2000))
+        with self.connection() as connection:
+            rows = connection.execute(
+                "SELECT payload FROM news_events ORDER BY created_at DESC LIMIT ?",
+                (bounded_limit,),
+            ).fetchall()
+        return [json.loads(row["payload"]) for row in rows]

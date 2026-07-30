@@ -130,6 +130,18 @@ def meta_acceptance() -> dict[str, object]:
 
 
 @app.post(
+    "/api/v1/candidates/research",
+    tags=["research"],
+    dependencies=[Depends(require_admin)],
+)
+def research_candidates() -> list[dict[str, object]]:
+    try:
+        return get_service().research_latest()
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@app.post(
     "/api/v1/reports/latest/telegram",
     tags=["reports"],
     dependencies=[Depends(require_admin)],

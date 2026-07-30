@@ -5,7 +5,8 @@ from datetime import UTC, datetime
 from io import StringIO
 
 from lmio.domain import SecuritySnapshot
-from lmio.providers.base import Provider, ProviderHealth, ProviderState
+from lmio.providers.base import ProviderHealth, ProviderState
+from lmio.providers.contracts import MarketDataProvider
 
 REQUIRED_COLUMNS = {
     "symbol",
@@ -40,7 +41,7 @@ def _float_or_none(value: str | None) -> float | None:
     return float(value)
 
 
-class CSVSnapshotProvider(Provider):
+class CSVSnapshotProvider(MarketDataProvider):
     name = "authorised_csv_snapshot"
 
     def health(self) -> ProviderHealth:
@@ -82,3 +83,6 @@ class CSVSnapshotProvider(Provider):
         if not items:
             raise ValueError("CSV contains no data rows")
         return items
+
+    def snapshots(self) -> list[SecuritySnapshot]:
+        raise RuntimeError("Use parse(content) or the trusted CLI with an authorised export.")

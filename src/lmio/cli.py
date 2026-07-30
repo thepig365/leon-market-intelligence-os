@@ -15,7 +15,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="LMIO local operations")
     parser.add_argument(
         "command",
-        choices=("demo-daily", "import-csv", "meta-acceptance", "refresh-sec", "status"),
+        choices=(
+            "demo-daily",
+            "import-csv",
+            "meta-acceptance",
+            "refresh-sec",
+            "research-latest",
+            "status",
+        ),
     )
     parser.add_argument("--file", type=Path)
     args = parser.parse_args()
@@ -34,6 +41,8 @@ def main() -> None:
             service.store,
             settings.parsed_sec_watchlist(),
         )
+    elif args.command == "research-latest":
+        payload = service.research_latest()
     elif args.command == "meta-acceptance":
         payload = service.run_meta_acceptance()
     else:

@@ -5,8 +5,9 @@ import json
 
 from lmio.config import Settings
 from lmio.demo import demo_universe, meta_acceptance_input
-from lmio.domain import SecuritySnapshot
+from lmio.domain import NewsEvent, ScreenCandidate, SecuritySnapshot
 from lmio.reports import build_daily_report, classify_regime
+from lmio.research import build_research_pack
 from lmio.screens import run_core_screens
 from lmio.store import RuntimeStore
 from lmio.universe import UniversePolicy, build_investable_universe
@@ -78,3 +79,24 @@ class LMIOService:
             },
         )
         return result.model_dump(mode="json")
+
+    def research_latest(self, limit: int = 10) -> list[dict[str, object]]:
+        latest = self.store.latest_json("screen_runs")
+        if latest is None:
+            raise ValueError("No screen run exists")
+        news = [NewsEvent.model_validate(item) for item in self.store.news_payloads()]
+        candidates = [ScreenCandidate.model_validate(item) for item in latest[:limit]]
+        results: list[dict[str, object]] = []
+        for candidate in candidates:
+            pack = build_research_pack(candidate, news, None)
+            payload = pack.model_dump(mode="json")
+            self.store.append_json(
+                "research_packs",
+                {
+                    "symbol": pack.symbol,
+                    "model_version": pack.model_version,
+                    "payload": payload,
+                },
+            )
+            results.append(payload)
+        return results
