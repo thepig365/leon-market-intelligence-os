@@ -1,6 +1,9 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 from lmio.config import Settings
+from lmio.domain import NewsEvent
+from lmio.news import event_fingerprint
 from lmio.service import LMIOService
 
 
@@ -102,3 +105,24 @@ def test_master_spec_minimum_tables_exist(tmp_path: Path) -> None:
         }
 
     assert required <= actual
+
+
+def test_news_event_can_be_retrieved_by_stable_fingerprint(tmp_path: Path) -> None:
+    service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
+    event = NewsEvent(
+        headline="Company raises official guidance",
+        source="Company IR",
+        source_url="https://example.test/investor-relations/guidance",
+        source_tier=1,
+        published_at=datetime(2026, 7, 30, tzinfo=UTC),
+        symbols=["TEST"],
+        event_type="guidance",
+        significance=90,
+        surprise=25,
+        confidence=0.95,
+    )
+    fingerprint = event_fingerprint(event)
+
+    assert service.store.put_news_event(fingerprint, event.model_dump(mode="json")) is True
+    assert service.store.news_event(fingerprint) == event.model_dump(mode="json")
+    assert service.store.news_event("missing") is None

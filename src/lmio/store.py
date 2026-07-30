@@ -484,3 +484,11 @@ class RuntimeStore:
                 (bounded_limit,),
             ).fetchall()
         return [json.loads(row["payload"]) for row in rows]
+
+    def news_event(self, fingerprint: str) -> dict[str, Any] | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                "SELECT payload FROM news_events WHERE fingerprint = ?",
+                (fingerprint,),
+            ).fetchone()
+        return json.loads(row["payload"]) if row is not None else None

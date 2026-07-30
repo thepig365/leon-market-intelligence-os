@@ -12,6 +12,9 @@ from pydantic import BaseModel, Field
 from lmio import __version__
 from lmio.audit import audit_event
 from lmio.config import get_settings
+from lmio.domain import NewsEvent
+from lmio.news import news_impact_score
+from lmio.news_plan import ReactionEvidence, propose_news_plan
 from lmio.plans import ConditionalPlan, PlanState, transition_with_evidence
 from lmio.security import require_admin
 from lmio.service import LMIOService
@@ -354,6 +357,57 @@ def check_news() -> dict[str, Any]:
         "status": "read_only_check",
         "stored_events": get_service().store.counts()["news_events"],
         "external_provider_call": False,
+    }
+
+
+class NewsAnalysisInput(BaseModel):
+    evidence_urls: list[str] = Field(default_factory=list, max_length=20)
+    reaction: ReactionEvidence | None = None
+
+
+@app.post(
+    "/api/news/{event_id}/analyse",
+    tags=["research"],
+    dependencies=[Depends(require_admin)],
+)
+def analyse_news_event(event_id: str, payload: NewsAnalysisInput) -> dict[str, Any]:
+    stored = get_service().store.news_event(event_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="News event not found.")
+    event = NewsEvent.model_validate(stored)
+    impact = news_impact_score(event)
+    plan = propose_news_plan(
+        event,
+        price_confirmation=False,
+        evidence_urls=payload.evidence_urls,
+        reaction=payload.reaction,
+    )
+    plan_payload = plan.model_dump(mode="json") if plan is not None else None
+    plan_id = None
+    if plan_payload is not None:
+        plan_id = get_service().store.append_json(
+            "conditional_plans",
+            {
+                "symbol": plan.symbol,
+                "state": plan.state,
+                "version": plan.version,
+                "payload": plan_payload,
+            },
+        )
+    audit_event(
+        "news_event_analysed",
+        event_id=event_id,
+        impact_score=impact,
+        conditional_plan_created=plan_id is not None,
+    )
+    return {
+        "event_id": event_id,
+        "impact_score": impact,
+        "priority": "P0" if impact >= 85 else "P1" if impact >= 70 else "watch",
+        "reaction_confirmed": payload.reaction.confirmed if payload.reaction else False,
+        "conditional_plan_id": plan_id,
+        "conditional_plan": plan_payload,
+        "order_created": False,
     }
 
 
