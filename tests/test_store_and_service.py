@@ -27,3 +27,5 @@ def test_meta_valuation_is_versioned(tmp_path: Path) -> None:
 
     assert result["symbol"] == "META"
     assert service.store.counts()["valuation_runs"] == 1
+    assert service.store.counts()["research_packs"] == 0
+    assert service.store.counts()["conditional_plans"] == 0

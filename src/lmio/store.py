@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MIGRATION = """
 CREATE TABLE IF NOT EXISTS schema_versions (
     version INTEGER PRIMARY KEY,
@@ -75,6 +75,28 @@ CREATE TABLE IF NOT EXISTS system_events (
     payload TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS research_packs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    model_version TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS conditional_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    state TEXT NOT NULL,
+    version TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS provider_health (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider TEXT NOT NULL,
+    state TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 
@@ -111,6 +133,9 @@ class RuntimeStore:
             "reports",
             "signal_outcomes",
             "system_events",
+            "research_packs",
+            "conditional_plans",
+            "provider_health",
         }
         if table not in allowed:
             raise ValueError(f"unsupported append table: {table}")
@@ -142,7 +167,15 @@ class RuntimeStore:
         return json.loads(row["payload"]) if row else None
 
     def history_json(self, table: str, limit: int = 50) -> list[dict[str, Any]]:
-        allowed = {"universe_runs", "screen_runs", "valuation_runs", "reports"}
+        allowed = {
+            "universe_runs",
+            "screen_runs",
+            "valuation_runs",
+            "reports",
+            "research_packs",
+            "conditional_plans",
+            "provider_health",
+        }
         if table not in allowed:
             raise ValueError(f"unsupported history table: {table}")
         bounded_limit = max(1, min(limit, 200))
@@ -170,6 +203,9 @@ class RuntimeStore:
             "signal_outcomes",
             "telegram_deliveries",
             "system_events",
+            "research_packs",
+            "conditional_plans",
+            "provider_health",
         )
         with self.connection() as connection:
             return {

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "orchestrator": "Hermes",
+  "jobs": [
+    {
+      "id": "lmio-provider-health",
+      "cadence": "continuous",
+      "command": "python -m lmio.cli status",
+      "mutates_external_state": false
+    },
+    {
+      "id": "lmio-sec-monitor",
+      "cadence": "continuous",
+      "command": "python -m lmio.cli refresh-sec",
+      "requires": ["SEC_USER_AGENT"],
+      "mutates_external_state": false
+    },
+    {
+      "id": "lmio-premarket",
+      "cadence": "pre-market",
+      "command": "python -m lmio.cli import-csv --file ${LMIO_APPROVED_SNAPSHOT}",
+      "requires": ["LMIO_APPROVED_SNAPSHOT"],
+      "mutates_external_state": false
+    },
+    {
+      "id": "lmio-meta-acceptance",
+      "cadence": "weekend",
+      "command": "python -m lmio.cli meta-acceptance",
+      "mutates_external_state": false
+    }
+  ],
+  "prohibited": [
+    "broker order execution",
+    "paper trading",
+    "live trading",
+    "automatic provider purchase"
+  ]
+}

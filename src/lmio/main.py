@@ -101,6 +101,24 @@ def latest_report() -> dict[str, Any]:
     return report
 
 
+@app.get("/api/v1/screens/latest", tags=["research"])
+def latest_screen() -> dict[str, Any]:
+    screen = get_service().store.latest_json("screen_runs")
+    if screen is None:
+        raise HTTPException(status_code=404, detail="No screen run exists.")
+    return screen
+
+
+@app.get("/api/v1/reports/history", tags=["research"])
+def report_history(limit: int = 50) -> list[dict[str, Any]]:
+    return get_service().store.history_json("reports", limit)
+
+
+@app.get("/api/v1/valuations/history", tags=["valuation"])
+def valuation_history(limit: int = 50) -> list[dict[str, Any]]:
+    return get_service().store.history_json("valuation_runs", limit)
+
+
 @app.post(
     "/api/v1/valuation/meta-acceptance",
     tags=["valuation"],
