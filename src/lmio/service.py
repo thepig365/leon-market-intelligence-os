@@ -42,6 +42,27 @@ class LMIOService:
         data_mode: str,
         valuations: dict[str, ValuationResult] | None = None,
     ) -> dict[str, object]:
+        for snapshot in snapshots:
+            snapshot_payload = snapshot.model_dump(mode="json")
+            snapshot_fingerprint = hashlib.sha256(
+                json.dumps(
+                    {
+                        "provider": data_mode,
+                        "symbol": snapshot.symbol,
+                        "observed_at": snapshot_payload["observed_at"],
+                        "payload": snapshot_payload,
+                    },
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
+            self.store.put_provider_snapshot(
+                snapshot_fingerprint,
+                provider=data_mode,
+                symbol=snapshot.symbol,
+                company=snapshot.company,
+                observed_at=str(snapshot_payload["observed_at"]),
+                payload=snapshot_payload,
+            )
         policy = UniversePolicy()
         investable = build_investable_universe(snapshots, policy)
         serialised = [item.model_dump(mode="json") for item in investable]

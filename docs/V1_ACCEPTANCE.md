@@ -26,6 +26,7 @@ external integrations that require credentials or a successful live read.
 | 18 | Offline security review | fail-closed mutations, redaction, no trading and external gate review | `SECURITY_REVIEW.md`; security/audit tests | Pass |
 | 19 | Structured SEC ownership evidence | deterministic 13F, Schedule 13D/13G and Form 4 parsers with official-host allowlist and ingestion dedupe | `tests/test_sec_ownership.py`, `tests/test_sec_monitor.py`, `tests/test_sec_provider.py` | Pass; live read pending |
 | 20 | News reaction structure | directional abnormal return, relative volume, VWAP, opening-range and gap-retention gates | `tests/test_news_plan.py`, `tests/test_api.py` | Pass |
+| 21 | Authorised current-data ingestion | provider-neutral CSV adapter, immutable snapshot persistence, dedupe, freshness and completeness gates | `tests/test_csv_provider.py`, `tests/test_store_and_service.py` | Pass; authorised real export pending |
 
 ## Verification commands
 

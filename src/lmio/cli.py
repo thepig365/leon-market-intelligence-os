@@ -37,7 +37,28 @@ def main() -> None:
     elif args.command == "import-csv":
         if args.file is None:
             parser.error("--file is required for import-csv")
-        snapshots = CSVSnapshotProvider().parse(args.file.read_text())
+        provider = CSVSnapshotProvider()
+        try:
+            snapshots = provider.parse(args.file.read_text())
+        except Exception as error:
+            service.store.append_json(
+                "provider_health",
+                {
+                    "provider": provider.name,
+                    "state": "unavailable",
+                    "payload": {"detail": type(error).__name__},
+                },
+            )
+            raise
+        health = provider.health()
+        service.store.append_json(
+            "provider_health",
+            {
+                "provider": health.provider,
+                "state": health.state.value,
+                "payload": {"detail": health.detail},
+            },
+        )
         payload = service.run_daily(snapshots, data_mode="authorised_csv")
     elif args.command == "refresh-sec":
         settings = get_settings()

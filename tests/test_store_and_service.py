@@ -23,6 +23,8 @@ def test_daily_run_is_append_only_and_reproducible(tmp_path: Path) -> None:
     assert counts["universe_runs"] == 2
     assert counts["screen_runs"] == 2
     assert counts["reports"] == 2
+    assert counts["provider_snapshots"] == 7
+    assert counts["symbols"] == 7
     assert counts["candidate_transitions"] >= 2
     history = service.store.history_json("reports")
     assert len(history) == 2

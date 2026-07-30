@@ -22,6 +22,7 @@ evidence references. It does not create a duplicate project-memory system.
 - META-shaped high-growth/high-CapEx acceptance fixture;
 - official SEC EDGAR read-only adapter and data-contract tests;
 - structured 13F, Schedule 13D/13G and Form 4 ownership parsing;
+- bounded, freshness-checked and deduplicated authorised CSV ingestion;
 - official-source news deduplication and impact scoring;
 - directional reaction confirmation using abnormal return, relative volume,
   VWAP, opening-range structure and gap retention;
@@ -70,6 +71,17 @@ uv run python -m lmio.cli demo-daily
 uv run python -m lmio.cli meta-acceptance
 uv run python -m lmio.cli status
 ```
+
+An approved current-market export can be imported without coupling the core
+system to a vendor:
+
+```bash
+uv run python -m lmio.cli import-csv --file /approved/path/snapshot.csv
+```
+
+The input must satisfy `docs/AUTHORISED_DATA_IMPORT.md`. A successful parse is
+not evidence that the upstream provider is authorised; Leon's provider decision
+and the export's provenance remain required.
 
 Then open:
 

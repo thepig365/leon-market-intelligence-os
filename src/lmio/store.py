@@ -566,6 +566,61 @@ class RuntimeStore:
             )
             return True
 
+    def put_provider_snapshot(
+        self,
+        fingerprint: str,
+        *,
+        provider: str,
+        symbol: str,
+        company: str,
+        observed_at: str,
+        payload: dict[str, Any],
+    ) -> bool:
+        """Atomically persist one normalised provider snapshot exactly once."""
+
+        with self.connection() as connection:
+            marker = connection.execute(
+                """
+                INSERT OR IGNORE INTO ingestion_dedup(fingerprint, record_type)
+                VALUES (?, 'provider_snapshot')
+                """,
+                (fingerprint,),
+            )
+            if marker.rowcount != 1:
+                return False
+            connection.execute(
+                """
+                INSERT INTO provider_snapshots(provider, symbol, observed_at, payload)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    provider,
+                    symbol,
+                    observed_at,
+                    json.dumps(payload, sort_keys=True, default=str),
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO symbols(symbol, company, payload)
+                VALUES (?, ?, ?)
+                ON CONFLICT(symbol) DO UPDATE SET
+                    company = excluded.company,
+                    payload = excluded.payload,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    symbol,
+                    company,
+                    json.dumps(
+                        {"source": payload.get("source"), "observed_at": observed_at},
+                        sort_keys=True,
+                        default=str,
+                    ),
+                ),
+            )
+            return True
+
     def has_ingestion_fingerprint(self, fingerprint: str) -> bool:
         """Return whether a bounded ingestion unit completed successfully."""
 
