@@ -44,6 +44,19 @@ class Settings(BaseSettings):
         default=Path("var/lmio.sqlite3"),
         validation_alias="LMIO_DATABASE_PATH",
     )
+    store_backend: Literal["sqlite", "supabase"] = Field(
+        default="sqlite",
+        validation_alias="LMIO_STORE_BACKEND",
+    )
+    supabase_url: str = Field(default="", validation_alias="SUPABASE_URL")
+    supabase_service_role_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="SUPABASE_SERVICE_ROLE_KEY",
+    )
+    read_api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="LMIO_READ_API_KEY",
+    )
     sec_user_agent: str = Field(default="", validation_alias="SEC_USER_AGENT")
     sec_watchlist: str = Field(
         default="AAPL:320193,META:1326801",
@@ -51,6 +64,11 @@ class Settings(BaseSettings):
     )
     telegram_bot_token: str = Field(default="", validation_alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str = Field(default="", validation_alias="TELEGRAM_CHAT_ID")
+    openai_api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="OPENAI_API_KEY",
+    )
+    openai_model: str = Field(default="", validation_alias="LMIO_OPENAI_MODEL")
     admin_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="LMIO_ADMIN_API_KEY")
 
     @model_validator(mode="after")
@@ -67,6 +85,15 @@ class Settings(BaseSettings):
         if enabled:
             joined = ", ".join(enabled)
             raise ValueError(f"LMIO V1 trading safety boundary violated: {joined} must be false")
+        if self.store_backend == "supabase":
+            if not self.supabase_url.strip():
+                raise ValueError("SUPABASE_URL is required when LMIO_STORE_BACKEND=supabase")
+            if not self.supabase_service_role_key.get_secret_value():
+                raise ValueError(
+                    "SUPABASE_SERVICE_ROLE_KEY is required when LMIO_STORE_BACKEND=supabase"
+                )
+            if not self.read_api_key.get_secret_value():
+                raise ValueError("LMIO_READ_API_KEY is required for a Supabase-backed runtime")
         return self
 
     def public_health(self) -> dict[str, str | bool]:
@@ -79,6 +106,7 @@ class Settings(BaseSettings):
             "can_trade": self.can_trade,
             "live_trading_enabled": self.live_trading_enabled,
             "paper_trading_enabled": self.paper_trading_enabled,
+            "store_backend": self.store_backend,
         }
 
     def integration_readiness(self) -> dict[str, bool]:
@@ -87,7 +115,11 @@ class Settings(BaseSettings):
             "telegram_configured": bool(
                 self.telegram_bot_token.strip() and self.telegram_chat_id.strip()
             ),
+            "openai_research_configured": bool(
+                self.openai_api_key.get_secret_value() and self.openai_model.strip()
+            ),
             "admin_api_key_configured": bool(self.admin_api_key.get_secret_value()),
+            "read_api_key_configured": bool(self.read_api_key.get_secret_value()),
         }
 
     def parsed_sec_watchlist(self) -> dict[str, str]:

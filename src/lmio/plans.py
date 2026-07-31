@@ -8,18 +8,27 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class PlanState(StrEnum):
     DRAFT = "draft"
-    WATCHING = "watching"
-    CONFIRMED = "confirmed"
+    WAITING_CONFIRMATION = "waiting_confirmation"
+    PAPER_READY = "paper_ready"
+    PAPER_OPEN = "paper_open"
     INVALIDATED = "invalidated"
-    EXPIRED = "expired"
+    CLOSED = "closed"
+    REVIEWED = "reviewed"
+
+    # Compatibility aliases used by foundation records.
+    WATCHING = "waiting_confirmation"
+    CONFIRMED = "paper_ready"
+    EXPIRED = "closed"
 
 
 ALLOWED_TRANSITIONS = {
-    PlanState.DRAFT: {PlanState.WATCHING, PlanState.INVALIDATED},
-    PlanState.WATCHING: {PlanState.CONFIRMED, PlanState.INVALIDATED, PlanState.EXPIRED},
-    PlanState.CONFIRMED: {PlanState.INVALIDATED, PlanState.EXPIRED},
-    PlanState.INVALIDATED: set(),
-    PlanState.EXPIRED: set(),
+    PlanState.DRAFT: {PlanState.WAITING_CONFIRMATION, PlanState.INVALIDATED},
+    PlanState.WAITING_CONFIRMATION: {PlanState.PAPER_READY, PlanState.INVALIDATED},
+    PlanState.PAPER_READY: {PlanState.PAPER_OPEN, PlanState.INVALIDATED},
+    PlanState.PAPER_OPEN: {PlanState.CLOSED, PlanState.INVALIDATED},
+    PlanState.INVALIDATED: {PlanState.REVIEWED},
+    PlanState.CLOSED: {PlanState.REVIEWED},
+    PlanState.REVIEWED: set(),
 }
 
 
@@ -40,7 +49,53 @@ class ConditionalPlan(BaseModel):
     version: str = "conditional-plan-v1"
 
 
-def transition(plan: ConditionalPlan, target: PlanState) -> ConditionalPlan:
+class PlanTransition(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    symbol: str
+    previous_state: PlanState
+    new_state: PlanState
+    actor: str
+    reason: str
+    evidence_urls: list[str]
+    occurred_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+def transition_with_evidence(
+    plan: ConditionalPlan,
+    target: PlanState,
+    *,
+    actor: str,
+    reason: str,
+    evidence_urls: list[str],
+    paper_trading_enabled: bool = False,
+) -> tuple[ConditionalPlan, PlanTransition]:
     if target not in ALLOWED_TRANSITIONS[plan.state]:
         raise ValueError(f"invalid plan transition: {plan.state} -> {target}")
-    return plan.model_copy(update={"state": target})
+    if target in {PlanState.PAPER_READY, PlanState.PAPER_OPEN} and not paper_trading_enabled:
+        raise PermissionError("paper trading is disabled")
+    if not actor.strip() or not reason.strip():
+        raise ValueError("actor and reason are required")
+    updated = plan.model_copy(update={"state": target})
+    event = PlanTransition(
+        symbol=plan.symbol,
+        previous_state=plan.state,
+        new_state=target,
+        actor=actor,
+        reason=reason,
+        evidence_urls=evidence_urls,
+    )
+    return updated, event
+
+
+def transition(plan: ConditionalPlan, target: PlanState) -> ConditionalPlan:
+    """Compatibility helper for non-paper foundation transitions."""
+    updated, _ = transition_with_evidence(
+        plan,
+        target,
+        actor="lmio-system",
+        reason="foundation compatibility transition",
+        evidence_urls=plan.evidence_urls,
+        paper_trading_enabled=False,
+    )
+    return updated

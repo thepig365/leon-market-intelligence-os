@@ -11,7 +11,8 @@ Required automated coverage:
 - news deduplication and source precedence;
 - SEC valid, missing and changed-contract responses;
 - conditional-plan transitions;
-- Telegram deduplication without credentials;
+- Telegram deduplication, queued-message release, bounded retries, validation
+  and provider-response limits without using real credentials;
 - outcome returns and excursions;
 - store migrations and append-only reruns;
 - false trading flags and rejected activation;

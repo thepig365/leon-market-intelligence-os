@@ -9,15 +9,59 @@ from pydantic import BaseModel, ConfigDict, Field
 class Strategy(StrEnum):
     QUALITY_GROWTH_MOMENTUM = "quality_growth_momentum"
     EARNINGS_REVISION_MOMENTUM = "earnings_revision_momentum"
+    INSTITUTIONAL_ACCUMULATION = "institutional_accumulation"
+    ACTIVIST_CATALYST = "activist_catalyst"
+    INSIDER_VALUE = "insider_value"
+    QARP = "quality_at_reasonable_price"
+    PEAD = "post_earnings_announcement_drift"
+    NEWS_DRIVEN = "news_driven"
+    OVERSOLD_REVERSAL = "oversold_reversal"
+    SHORT_SQUEEZE = "short_squeeze"
+    PATTERN_RECOGNITION = "pattern_recognition"
+
+
+class PatternType(StrEnum):
+    BASE_BREAKOUT = "base_breakout"
+    ASCENDING_TRIANGLE = "ascending_triangle"
+    DOUBLE_BOTTOM = "double_bottom"
+    TREND_PULLBACK = "trend_pullback"
+
+
+class PatternStage(StrEnum):
+    FORMING = "forming"
+    AWAITING_CONFIRMATION = "awaiting_confirmation"
+    CONFIRMED = "confirmed"
+    FAILED = "failed"
+
+
+class PatternSignal(BaseModel):
+    """Explainable chart-pattern observation; never an order instruction."""
+
+    name_zh: str
+    name_en: str
+    pattern_type: PatternType
+    stage: PatternStage
+    source_pattern: str
+    key_level: str = "等待历史价格数据"
+    volume_confirmation: str = "等待成交量确认"
+    confirmation: str
+    invalidation: str
 
 
 class CandidateState(StrEnum):
     DISCOVERED = "discovered"
-    SCREENED = "screened"
-    RESEARCH_REQUIRED = "research_required"
-    WATCHLIST = "watchlist"
-    PRIORITY = "priority"
+    FILTERED = "filtered"
+    RESEARCHING = "researching"
+    WATCHING = "watching"
+    CONFIRMED = "confirmed"
     REJECTED = "rejected"
+    EXPIRED = "expired"
+
+    # Compatibility names for persisted V1-foundation records.
+    SCREENED = "filtered"
+    RESEARCH_REQUIRED = "researching"
+    WATCHLIST = "watching"
+    PRIORITY = "confirmed"
 
 
 class SecuritySnapshot(BaseModel):
@@ -50,6 +94,19 @@ class SecuritySnapshot(BaseModel):
     earnings_surprise_pct: float | None = None
     relative_volume: float | None = None
     sector_strength: float | None = None
+    forward_pe: float | None = None
+    earnings_revision_breadth_pct: float | None = None
+    institutional_ownership_change_pct: float | None = None
+    activist_stake_pct: float | None = None
+    insider_net_buying_m: float | None = None
+    days_since_earnings: int | None = None
+    post_earnings_return_pct: float | None = None
+    rsi_14: float | None = None
+    short_interest_float_pct: float | None = None
+    days_to_cover: float | None = None
+    borrow_cost_pct: float | None = None
+    news_impact_score: float | None = None
+    chart_pattern: str | None = None
     data_completeness: float = Field(default=1.0, ge=0, le=1)
 
 
@@ -79,12 +136,25 @@ class ScreenCandidate(BaseModel):
     scores: DimensionScores
     total_score: float = Field(ge=0, le=100)
     market_price: float
+    intrinsic_value_range: str = "待完成可复现估值"
     catalyst: str
     next_confirmation: str
     invalidation: str
     horizon: str
     evidence: list[EvidenceItem]
     missing_fields: list[str] = Field(default_factory=list)
+    pattern: PatternSignal | None = None
+
+
+class CandidateTransition(BaseModel):
+    symbol: str
+    strategy: Strategy
+    previous_state: CandidateState | None
+    new_state: CandidateState
+    reason: str
+    actor: str
+    evidence_urls: list[str] = Field(default_factory=list)
+    occurred_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ValuationInput(BaseModel):
@@ -95,6 +165,13 @@ class ValuationInput(BaseModel):
     maintenance_capex: float | None = None
     growth_capex: float | None = None
     sustainable_owner_earnings: float | None = None
+    revenue: float | None = Field(default=None, gt=0)
+    ebitda: float | None = Field(default=None, gt=0)
+    net_income: float | None = None
+    ev_revenue_multiple: float | None = Field(default=None, gt=0)
+    ev_ebitda_multiple: float | None = Field(default=None, gt=0)
+    pe_multiple: float | None = Field(default=None, gt=0)
+    p_fcf_multiple: float | None = Field(default=None, gt=0)
     net_cash: float
     diluted_shares: float = Field(gt=0)
     growth_rate: float
@@ -124,7 +201,8 @@ class ValuationResult(BaseModel):
     safety_margin: float
     safety_label: str
     confidence: float
-    assumptions: dict[str, float | int | str]
+    assumptions: dict[str, float | int | str | None]
+    model_components: list[dict[str, float | str]]
     sensitivity: list[dict[str, float]]
     calculation_version: str
     calculated_at: datetime
@@ -147,7 +225,38 @@ class MarketRegime(BaseModel):
     label: str
     confidence: float = Field(ge=0, le=1)
     evidence: list[str]
+    contrary_evidence: list[str] = Field(default_factory=list)
+    preferred_strategies: list[Strategy] = Field(default_factory=list)
+    suppressed_strategies: list[Strategy] = Field(default_factory=list)
+    risk_multiplier: float = Field(default=1, ge=0, le=2)
+    blocked_sectors: list[str] = Field(default_factory=list)
+    blocked_symbols: list[str] = Field(default_factory=list)
+    manual_review_required: bool = False
     observed_at: datetime
+
+
+class DecisionCard(BaseModel):
+    symbol: str
+    company: str
+    strategy: Strategy
+    what_changed: str
+    scores: DimensionScores
+    market_price: float = Field(gt=0)
+    strict_fcf_value: float | None = None
+    owner_earnings_value: float | None = None
+    multi_model_value: float | None = None
+    intrinsic_value_range: str
+    safety_margin: float | None = None
+    valuation_confidence: float | None = Field(default=None, ge=0, le=1)
+    supporting_evidence: list[str]
+    contrary_evidence: list[str]
+    risks: list[str]
+    confirmation_condition: str
+    entry_zone: str
+    stop_reference: str
+    target_reference: str
+    risk_reward: float = Field(gt=0)
+    status: str
 
 
 class DailyReport(BaseModel):
@@ -157,6 +266,7 @@ class DailyReport(BaseModel):
     funnel: dict[str, int]
     top_10: list[ScreenCandidate]
     top_3: list[ScreenCandidate]
+    decision_cards: list[DecisionCard] = Field(default_factory=list)
     message_zh: str
     qualified_trade_plans: int = 0
     warnings: list[str] = Field(default_factory=list)

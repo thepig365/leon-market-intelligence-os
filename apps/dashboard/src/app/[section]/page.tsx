@@ -1,0 +1,42 @@
+import { notFound } from "next/navigation";
+import { StatusPanel } from "@/components/status-panel";
+import { TopTenPanel } from "@/components/top-ten-panel";
+import { dashboardSections, sectionBySlug } from "@/lib/navigation";
+import { readLMIO } from "@/lib/lmio";
+
+export function generateStaticParams() {
+  return dashboardSections.map((section) => ({ section: section.slug }));
+}
+
+export default async function DashboardPage({
+  params,
+}: {
+  params: Promise<{ section: string }>;
+}) {
+  const { section: slug } = await params;
+  const section = sectionBySlug(slug);
+  if (!section) {
+    notFound();
+  }
+  const result = await readLMIO(section.endpoint);
+
+  return (
+    <>
+      <section className="hero compact">
+        <p className="eyebrow">{section.eyebrow}</p>
+        <h1>{section.label}</h1>
+        <p className="lede">{section.description}</p>
+        {section.deferred ? (
+          <p className="deferredNotice">
+            此模块不在 V1 激活范围内。没有提供商、模拟内容或交易能力被启用。
+          </p>
+        ) : null}
+      </section>
+      {slug === "top-10" ? (
+        <TopTenPanel result={result} />
+      ) : (
+        <StatusPanel result={result} />
+      )}
+    </>
+  );
+}
