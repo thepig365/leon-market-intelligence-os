@@ -14,6 +14,14 @@ const identity = await readFile(
   "utf8",
 );
 const runtime = await readFile(new URL("../src/lib/lmio.ts", import.meta.url), "utf8");
+const googleSignIn = await readFile(
+  new URL("../src/components/google-sign-in.tsx", import.meta.url),
+  "utf8",
+);
+const authCallback = await readFile(
+  new URL("../src/app/auth/callback/route.ts", import.meta.url),
+  "utf8",
+);
 
 const expected = [
   "command-centre",
@@ -51,7 +59,16 @@ for (const claim of ["private_beta_access", 'app.status !== "active"', "owner", 
 if (!runtime.includes('"x-lmio-read-key": key')) {
   throw new Error("Dashboard must authenticate server-to-server runtime reads.");
 }
+if (!googleSignIn.includes('provider: "google"') || !googleSignIn.includes("/auth/callback")) {
+  throw new Error("Dashboard must offer Google login through the protected auth callback.");
+}
+if (
+  !authCallback.includes("exchangeCodeForSession") ||
+  !authCallback.includes("identityFromClaims")
+) {
+  throw new Error("Google callback must exchange the session and enforce Bayview identity claims.");
+}
 
 console.log(
-  `Verified ${expected.length} dashboard sections and the protected identity/runtime boundary.`,
+  `Verified ${expected.length} dashboard sections and the protected identity/runtime/OAuth boundary.`,
 );

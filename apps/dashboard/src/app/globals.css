@@ -89,6 +89,7 @@ a:focus-visible {
 }
 
 .signOutButton:focus-visible,
+.googleSignIn button:focus-visible,
 .signInForm button:focus-visible,
 .signInForm input:focus-visible {
   outline: 3px solid #1f6a49;
@@ -146,6 +147,47 @@ footer {
   display: grid;
   gap: 18px;
   margin-top: 30px;
+}
+
+.googleSignIn {
+  margin-top: 30px;
+}
+
+.googleSignIn button {
+  background: var(--accent);
+  border: 0;
+  color: white;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  min-height: 50px;
+  width: 100%;
+}
+
+.googleSignIn button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.googleSignIn .formError {
+  margin-bottom: 0;
+}
+
+.signInDivider {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 0.8rem;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.signInDivider::before,
+.signInDivider::after {
+  background: var(--line);
+  content: "";
+  flex: 1;
+  height: 1px;
 }
 
 .signInForm label {

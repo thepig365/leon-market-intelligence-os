@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { identityFromClaims } from "@/lib/auth/identity";
 import { getSupabaseEnvironment, hasSupabaseEnvironment } from "@/lib/supabase/env";
 
-const publicRoutes = new Set(["/sign-in"]);
+const publicRoutes = new Set(["/sign-in", "/auth/callback"]);
 
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
@@ -42,7 +42,9 @@ export async function proxy(request: NextRequest) {
   const { data, error } = await supabase.auth.getClaims();
   const identity = error ? null : identityFromClaims(data?.claims);
   if (!identity && !isPublic) return NextResponse.redirect(new URL("/sign-in", request.url));
-  if (identity && isPublic) return NextResponse.redirect(new URL("/", request.url));
+  if (identity && pathname === "/sign-in") {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
   return response;
 }
 
