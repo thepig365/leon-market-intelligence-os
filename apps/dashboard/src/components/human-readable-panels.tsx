@@ -192,10 +192,7 @@ function CommandCentrePanel({ result }: { result: LMIOResult }) {
 }
 
 function StrategyScreenerPanel({ result }: { result: LMIOResult }) {
-  if (result.state !== "ready") {
-    return <StatePanel result={result} title="策略筛选器尚未取得资料" />;
-  }
-  const candidates = list(result.data).map(record);
+  const candidates = result.state === "ready" ? list(result.data).map(record) : [];
   const grouped = candidates.reduce<Record<string, UnknownRecord[]>>((acc, item) => {
     const key = text(item.strategy, "other");
     acc[key] = [...(acc[key] ?? []), item];
@@ -204,13 +201,18 @@ function StrategyScreenerPanel({ result }: { result: LMIOResult }) {
 
   return (
     <section className="researchView">
+      {result.state !== "ready" ? (
+        <StatePanel result={result} title="等待下一次已核实筛选" />
+      ) : null}
       <div className="researchNotice">
         <div>
           <p className="eyebrow">SELECTION FRAMEWORK</p>
           <h2>11 套独立策略，统一证据门槛</h2>
           <p>核心判断由盈利修正、经营质量、估值与价格动量共同构成；图形只负责确认时机。</p>
         </div>
-        <span className="status status-ready">{candidates.length} 个候选</span>
+        <span className={`status status-${result.state}`}>
+          {result.state === "ready" ? `${candidates.length} 个候选` : "等待市场资料"}
+        </span>
       </div>
 
       <div className="strategyGrid">
@@ -229,7 +231,11 @@ function StrategyScreenerPanel({ result }: { result: LMIOResult }) {
                   ))}
                 </div>
               ) : (
-                <small>本次没有达到门槛的候选</small>
+                <small>
+                  {result.state === "ready"
+                    ? "本次没有达到门槛的候选"
+                    : "等待下一次已核实筛选"}
+                </small>
               )}
             </article>
           );
