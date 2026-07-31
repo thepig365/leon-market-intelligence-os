@@ -4,10 +4,12 @@ import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 5
 MIGRATION = """
 CREATE TABLE IF NOT EXISTS schema_versions (
     version INTEGER PRIMARY KEY,
@@ -66,6 +68,8 @@ CREATE TABLE IF NOT EXISTS telegram_deliveries (
     status TEXT NOT NULL,
     payload TEXT NOT NULL,
     provider_message_id TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_attempt_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS system_events (
@@ -97,6 +101,235 @@ CREATE TABLE IF NOT EXISTS provider_health (
     payload TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS symbols (
+    symbol TEXT PRIMARY KEY,
+    company TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS provider_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider TEXT NOT NULL,
+    symbol TEXT,
+    observed_at TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS candidate_transitions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    strategy TEXT NOT NULL,
+    previous_state TEXT,
+    new_state TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS trade_plan_transitions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    previous_state TEXT NOT NULL,
+    new_state TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS ownership_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    source_url TEXT,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS signals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    strategy TEXT NOT NULL,
+    state TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS user_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_type TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS strategy_performance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    strategy TEXT NOT NULL,
+    horizon TEXT NOT NULL,
+    regime TEXT,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS watchlists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS watchlist_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    watchlist_id INTEGER NOT NULL,
+    symbol TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(watchlist_id, symbol),
+    FOREIGN KEY (watchlist_id) REFERENCES watchlists(id)
+);
+CREATE TABLE IF NOT EXISTS symbol_classifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS market_prices_daily (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS market_prices_intraday (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS market_indicators (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS fundamentals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS financial_statements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS earnings_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS earnings_estimates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS earnings_revisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS news_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS news_symbol_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS sec_filings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS institutional_managers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS institutional_holdings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS insider_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS short_interest (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS options_flow (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS social_mentions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS market_regimes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS screen_definitions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS screen_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS stock_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS candidate_evidence (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS valuation_assumptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS valuation_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS signal_scores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS trade_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS paper_trades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS paper_trade_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
+    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS ingestion_dedup (
+    fingerprint TEXT PRIMARY KEY,
+    record_type TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 
@@ -120,10 +353,83 @@ class RuntimeStore:
     def migrate(self) -> None:
         with self.connection() as connection:
             connection.executescript(MIGRATION)
+            telegram_columns = {
+                str(row["name"])
+                for row in connection.execute("PRAGMA table_info(telegram_deliveries)").fetchall()
+            }
+            if "attempt_count" not in telegram_columns:
+                connection.execute(
+                    """
+                    ALTER TABLE telegram_deliveries
+                    ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0
+                    """
+                )
+            if "last_attempt_at" not in telegram_columns:
+                connection.execute(
+                    "ALTER TABLE telegram_deliveries ADD COLUMN last_attempt_at TEXT"
+                )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO schema_versions(version)
+                SELECT 4
+                WHERE EXISTS (
+                    SELECT 1 FROM schema_versions WHERE version = 3
+                )
+                """
+            )
             connection.execute(
                 "INSERT OR IGNORE INTO schema_versions(version) VALUES (?)",
                 (SCHEMA_VERSION,),
             )
+
+    def integrity_check(self) -> list[str]:
+        """Return SQLite integrity findings; a healthy store returns only ``ok``."""
+
+        with self.connection() as connection:
+            rows = connection.execute("PRAGMA integrity_check").fetchall()
+        return [str(row[0]) for row in rows]
+
+    def schema_versions(self) -> list[int]:
+        with self.connection() as connection:
+            rows = connection.execute(
+                "SELECT version FROM schema_versions ORDER BY version"
+            ).fetchall()
+        return [int(row[0]) for row in rows]
+
+    def backup_to(self, destination: str | Path) -> dict[str, Any]:
+        """Create and verify a non-destructive, consistent SQLite backup."""
+
+        if str(self.path) == ":memory:":
+            raise ValueError("in-memory stores cannot be backed up")
+        if not self.path.exists():
+            raise FileNotFoundError(self.path)
+        target = Path(destination)
+        if target.resolve() == self.path.resolve():
+            raise ValueError("backup destination must differ from the active store")
+        if target.exists():
+            raise FileExistsError(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source = sqlite3.connect(f"file:{self.path.resolve()}?mode=ro", uri=True)
+        backup = sqlite3.connect(target)
+        try:
+            source.backup(backup)
+        finally:
+            backup.close()
+            source.close()
+        verified = RuntimeStore(target)
+        findings = verified.integrity_check()
+        if findings != ["ok"]:
+            raise RuntimeError(f"backup integrity check failed: {findings}")
+        digest = sha256(target.read_bytes()).hexdigest()
+        return {
+            "source": str(self.path),
+            "backup": str(target),
+            "sha256": digest,
+            "bytes": target.stat().st_size,
+            "schema_versions": verified.schema_versions(),
+            "counts": verified.counts(),
+            "integrity": findings,
+        }
 
     def append_json(self, table: str, columns: dict[str, Any]) -> int:
         allowed = {
@@ -136,6 +442,15 @@ class RuntimeStore:
             "research_packs",
             "conditional_plans",
             "provider_health",
+            "provider_snapshots",
+            "candidate_transitions",
+            "trade_plan_transitions",
+            "ownership_events",
+            "signals",
+            "user_feedback",
+            "strategy_performance",
+            "watchlists",
+            "watchlist_members",
         }
         if table not in allowed:
             raise ValueError(f"unsupported append table: {table}")
@@ -166,6 +481,22 @@ class RuntimeStore:
             ).fetchone()
         return json.loads(row["payload"]) if row else None
 
+    def latest_provider_health(self) -> dict[str, Any] | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                """
+                SELECT provider, state, payload, created_at
+                FROM provider_health
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        item["payload"] = json.loads(item["payload"])
+        return item
+
     def history_json(self, table: str, limit: int = 50) -> list[dict[str, Any]]:
         allowed = {
             "universe_runs",
@@ -175,6 +506,15 @@ class RuntimeStore:
             "research_packs",
             "conditional_plans",
             "provider_health",
+            "provider_snapshots",
+            "candidate_transitions",
+            "trade_plan_transitions",
+            "ownership_events",
+            "signals",
+            "user_feedback",
+            "strategy_performance",
+            "watchlists",
+            "watchlist_members",
         }
         if table not in allowed:
             raise ValueError(f"unsupported history table: {table}")
@@ -206,6 +546,16 @@ class RuntimeStore:
             "research_packs",
             "conditional_plans",
             "provider_health",
+            "symbols",
+            "provider_snapshots",
+            "candidate_transitions",
+            "trade_plan_transitions",
+            "ownership_events",
+            "signals",
+            "user_feedback",
+            "strategy_performance",
+            "watchlists",
+            "watchlist_members",
         )
         with self.connection() as connection:
             return {
@@ -224,6 +574,119 @@ class RuntimeStore:
             )
             return cursor.rowcount == 1
 
+    def put_ownership_event(
+        self,
+        fingerprint: str,
+        *,
+        symbol: str,
+        event_type: str,
+        source_url: str,
+        payload: dict[str, Any],
+    ) -> bool:
+        """Atomically persist one structured ownership record exactly once."""
+
+        with self.connection() as connection:
+            marker = connection.execute(
+                """
+                INSERT OR IGNORE INTO ingestion_dedup(fingerprint, record_type)
+                VALUES (?, 'ownership_event')
+                """,
+                (fingerprint,),
+            )
+            if marker.rowcount != 1:
+                return False
+            connection.execute(
+                """
+                INSERT INTO ownership_events(symbol, event_type, source_url, payload)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    symbol,
+                    event_type,
+                    source_url,
+                    json.dumps(payload, sort_keys=True, default=str),
+                ),
+            )
+            return True
+
+    def put_provider_snapshot(
+        self,
+        fingerprint: str,
+        *,
+        provider: str,
+        symbol: str,
+        company: str,
+        observed_at: str,
+        payload: dict[str, Any],
+    ) -> bool:
+        """Atomically persist one normalised provider snapshot exactly once."""
+
+        with self.connection() as connection:
+            marker = connection.execute(
+                """
+                INSERT OR IGNORE INTO ingestion_dedup(fingerprint, record_type)
+                VALUES (?, 'provider_snapshot')
+                """,
+                (fingerprint,),
+            )
+            if marker.rowcount != 1:
+                return False
+            connection.execute(
+                """
+                INSERT INTO provider_snapshots(provider, symbol, observed_at, payload)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    provider,
+                    symbol,
+                    observed_at,
+                    json.dumps(payload, sort_keys=True, default=str),
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO symbols(symbol, company, payload)
+                VALUES (?, ?, ?)
+                ON CONFLICT(symbol) DO UPDATE SET
+                    company = excluded.company,
+                    payload = excluded.payload,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    symbol,
+                    company,
+                    json.dumps(
+                        {"source": payload.get("source"), "observed_at": observed_at},
+                        sort_keys=True,
+                        default=str,
+                    ),
+                ),
+            )
+            return True
+
+    def has_ingestion_fingerprint(self, fingerprint: str) -> bool:
+        """Return whether a bounded ingestion unit completed successfully."""
+
+        with self.connection() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM ingestion_dedup WHERE fingerprint = ?",
+                (fingerprint,),
+            ).fetchone()
+        return row is not None
+
+    def mark_ingestion_fingerprint(self, fingerprint: str, record_type: str) -> bool:
+        """Mark an ingestion unit complete after its records are persisted."""
+
+        with self.connection() as connection:
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO ingestion_dedup(fingerprint, record_type)
+                VALUES (?, ?)
+                """,
+                (fingerprint, record_type),
+            )
+            return cursor.rowcount == 1
+
     def news_payloads(self, limit: int = 500) -> list[dict[str, Any]]:
         bounded_limit = max(1, min(limit, 2000))
         with self.connection() as connection:
@@ -232,3 +695,83 @@ class RuntimeStore:
                 (bounded_limit,),
             ).fetchall()
         return [json.loads(row["payload"]) for row in rows]
+
+    def news_event(self, fingerprint: str) -> dict[str, Any] | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                "SELECT payload FROM news_events WHERE fingerprint = ?",
+                (fingerprint,),
+            ).fetchone()
+        return json.loads(row["payload"]) if row is not None else None
+
+    def telegram_delivery(self, key: str) -> dict[str, Any] | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                """
+                SELECT status, attempt_count
+                FROM telegram_deliveries
+                WHERE dedupe_key = ?
+                """,
+                (key,),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def sent_telegram_count_since(self, since: datetime) -> int:
+        value = since.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        with self.connection() as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM telegram_deliveries
+                WHERE status = 'sent' AND created_at >= ?
+                """,
+                (value,),
+            ).fetchone()
+        return int(row[0])
+
+    def upsert_telegram_delivery(
+        self,
+        *,
+        key: str,
+        status: str,
+        payload: dict[str, Any],
+        provider_message_id: str | None,
+        attempt_increment: int,
+    ) -> None:
+        with self.connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO telegram_deliveries
+                    (
+                        dedupe_key,
+                        status,
+                        payload,
+                        provider_message_id,
+                        attempt_count,
+                        last_attempt_at
+                    )
+                VALUES (
+                    ?, ?, ?, ?, ?,
+                    CASE WHEN ? > 0 THEN CURRENT_TIMESTAMP ELSE NULL END
+                )
+                ON CONFLICT(dedupe_key) DO UPDATE SET
+                    status = excluded.status,
+                    payload = excluded.payload,
+                    provider_message_id = excluded.provider_message_id,
+                    attempt_count = (
+                        telegram_deliveries.attempt_count + excluded.attempt_count
+                    ),
+                    last_attempt_at = CASE
+                        WHEN excluded.attempt_count > 0 THEN CURRENT_TIMESTAMP
+                        ELSE telegram_deliveries.last_attempt_at
+                    END
+                """,
+                (
+                    key,
+                    status,
+                    json.dumps(payload, ensure_ascii=False),
+                    provider_message_id,
+                    attempt_increment,
+                    attempt_increment,
+                ),
+            )

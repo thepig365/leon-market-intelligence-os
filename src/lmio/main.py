@@ -4,15 +4,31 @@ from functools import lru_cache
 from html import escape
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, Response
+from pydantic import BaseModel, Field
 
 from lmio import __version__
 from lmio.audit import audit_event
 from lmio.config import get_settings
-from lmio.security import require_admin
+from lmio.domain import NewsEvent
+from lmio.news import news_impact_score
+from lmio.news_plan import ReactionEvidence, propose_news_plan
+from lmio.plans import ConditionalPlan, PlanState, transition_with_evidence
+from lmio.security import (
+    require_admin,
+    require_cron,
+    require_telegram_webhook,
+    valid_cron_credential,
+    valid_read_credential,
+)
 from lmio.service import LMIOService
-from lmio.telegram import queue_or_send
+from lmio.telegram import (
+    MessageKind,
+    format_symbol_snapshot,
+    parse_symbol_query,
+    queue_or_send,
+)
 
 app = FastAPI(
     title="Leon Market Intelligence OS",
@@ -37,6 +53,30 @@ DASHBOARD_PAGES = {
 }
 
 
+@app.middleware("http")
+async def require_runtime_read_key(request: Request, call_next: Any) -> Response:
+    """Keep runtime evidence private while leaving a minimal health probe."""
+
+    read_allowed = valid_read_credential(request.headers.get("x-lmio-read-key"))
+    cron_allowed = request.url.path in {
+        "/api/v1/providers/finviz/refresh",
+        "/api/v1/providers/news/refresh",
+    } and valid_cron_credential(
+        request.headers.get("authorization"), request.headers.get("x-lmio-cron-key")
+    )
+    webhook_path = request.url.path == "/api/v1/telegram/webhook"
+    if (
+        request.url.path not in {"/health", "/favicon.ico"}
+        and not webhook_path
+        and not (read_allowed or cron_allowed)
+    ):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid LMIO runtime read credential."},
+        )
+    return await call_next(request)
+
+
 @lru_cache
 def get_service() -> LMIOService:
     return LMIOService(get_settings())
@@ -57,31 +97,257 @@ def health() -> dict[str, Any]:
     return health_payload()
 
 
+@app.post(
+    "/api/v1/telegram/webhook",
+    tags=["research"],
+    dependencies=[Depends(require_telegram_webhook)],
+)
+async def telegram_webhook(request: Request) -> dict[str, str]:
+    """Answer Leon's private Telegram queries with current Finviz data."""
+
+    settings = get_settings()
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        return {"status": "ignored"}
+    message = payload.get("message")
+    if not isinstance(message, dict):
+        return {"status": "ignored"}
+    chat = message.get("chat")
+    text = message.get("text")
+    if (
+        not isinstance(chat, dict)
+        or str(chat.get("id", "")) != settings.telegram_chat_id
+        or not isinstance(text, str)
+    ):
+        return {"status": "ignored"}
+
+    normalised = text.strip()
+    if normalised.lower() in {"/start", "/help"}:
+        response = "\n".join(
+            (
+                "LMIO 查询帮助",
+                "直接发送股票代码，例如：SNDK",
+                "也可以发送：/quote SNDK",
+                "发送 /status 查看 Finviz 连接状态。",
+                "系统只提供研究信息，不会执行交易。",
+            )
+        )
+    elif normalised.lower() == "/status":
+        latest = get_service().store.latest_provider_health()
+        if latest is None:
+            response = "LMIO 尚无 Finviz 刷新记录。请稍后再试。"
+        else:
+            response = "\n".join(
+                (
+                    "LMIO · Finviz 连接状态",
+                    f"状态：{latest['state']}",
+                    f"最近检查：{latest['created_at']}",
+                    "仅供研究与决策支持；不会执行交易。",
+                )
+            )
+    else:
+        symbol = parse_symbol_query(normalised)
+        if symbol is None:
+            response = "请输入有效股票代码，例如 SNDK，或发送 /help。"
+        else:
+            try:
+                snapshot = get_service().finviz_symbol_snapshot(symbol)
+            except RuntimeError:
+                response = f"{symbol} 的 Finviz 查询暂时失败。旧数据未被修改，请稍后重试。"
+            else:
+                response = (
+                    format_symbol_snapshot(snapshot)
+                    if snapshot is not None
+                    else f"Finviz 当前没有返回 {symbol} 的可验证数据。"
+                )
+
+    delivery = queue_or_send(
+        get_service().store,
+        response,
+        bot_token=settings.telegram_bot_token,
+        chat_id=settings.telegram_chat_id,
+        kind=MessageKind.IMMEDIATE_ALERT,
+        max_per_hour=30,
+    )
+    audit_event("telegram_query_processed", delivery=delivery)
+    return {"status": "accepted", "delivery": delivery}
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> Response:
+    return Response(status_code=204)
+
+
 @app.get("/ready", tags=["system"])
 def ready() -> dict[str, Any]:
     settings = get_settings()
     service = get_service()
     payload = health_payload()
     payload["integrations"] = settings.integration_readiness()
+    latest_provider = service.store.latest_provider_health()
     payload["provider_status"] = (
-        "configured_not_verified"
-        if any(settings.integration_readiness().values())
-        else "not_configured"
+        latest_provider["state"]
+        if latest_provider is not None
+        else (
+            "configured_not_verified"
+            if any(settings.integration_readiness().values())
+            else "not_configured"
+        )
     )
+    payload["latest_provider"] = latest_provider
     payload["store"] = {"status": "ready", "counts": service.store.counts()}
     audit_event("readiness_checked", environment=payload["environment"])
     return payload
 
 
+@app.get("/api/status", tags=["system"])
+def api_status() -> dict[str, Any]:
+    return ready()
+
+
 @app.get("/api/v1/providers/health", tags=["system"])
 def providers_health() -> dict[str, Any]:
     readiness = get_settings().integration_readiness()
-    return {
+    providers = {
         name.removesuffix("_configured"): {
             "state": "configured_not_verified" if configured else "disabled",
         }
         for name, configured in readiness.items()
     }
+    latest_provider = get_service().store.latest_provider_health()
+    if latest_provider is not None:
+        providers[latest_provider["provider"]] = {
+            "state": latest_provider["state"],
+            "detail": latest_provider["payload"].get("detail"),
+            "checked_at": latest_provider["created_at"],
+        }
+    return providers
+
+
+app.get("/api/providers/health", tags=["system"])(providers_health)
+
+
+@app.get("/api/v1/command-centre", tags=["research"])
+def command_centre_data() -> dict[str, Any]:
+    """Return one truthful, non-sensitive operating view for the LMIO dashboard."""
+
+    service = get_service()
+    settings = get_settings()
+    report = service.store.latest_json("reports")
+    if report is None:
+        raise HTTPException(status_code=404, detail="No report exists.")
+
+    regime = dict(report.get("regime") or {})
+    research_queue = list(report.get("top_10") or [])[:3]
+    qualified_priorities = list(report.get("top_3") or [])
+    urgent_events = [
+        event
+        for event in service.latest_news(limit=50)
+        if event.get("significance", 0) >= 80 and event.get("confidence", 0) >= 0.7
+    ][:5]
+    risk_blocks = [
+        *list(regime.get("blocked_sectors") or []),
+        *list(regime.get("blocked_symbols") or []),
+    ]
+    warnings = list(report.get("warnings") or [])
+    if regime.get("label") == "Unverified":
+        warnings.append("市场环境尚未由独立基准数据核实；不得把候选排序视为交易指令。")
+    if not qualified_priorities and research_queue:
+        warnings.append("当前 Top 3 仅为研究队列；估值和确认条件不足，尚无优先机会。")
+
+    latest_provider = service.store.latest_provider_health()
+    counts = service.store.counts()
+    integrations = settings.integration_readiness()
+    return {
+        "generated_at": report.get("generated_at"),
+        "data_mode": report.get("data_mode"),
+        "regime": regime,
+        "funnel": report.get("funnel") or {},
+        "research_queue": research_queue,
+        "qualified_priorities": qualified_priorities,
+        "important_events": urgent_events,
+        "risk_blocks": risk_blocks,
+        "warnings": list(dict.fromkeys(warnings)),
+        "provider_health": providers_health(),
+        "latest_provider": latest_provider,
+        "telegram": {
+            "configured": bool(integrations.get("telegram_configured")),
+            "private_queries_configured": bool(integrations.get("telegram_queries_configured")),
+            "delivery_records": counts.get("telegram_deliveries", 0),
+        },
+        "storage": {"status": "ready", "counts": counts},
+        "safety": {
+            "can_trade": settings.can_trade,
+            "live_trading_enabled": settings.live_trading_enabled,
+            "paper_trading_enabled": settings.paper_trading_enabled,
+        },
+    }
+
+
+def _refresh_finviz(message_kind: MessageKind = MessageKind.PREMARKET) -> dict[str, object]:
+    try:
+        result = get_service().refresh_finviz(message_kind=message_kind)
+    except RuntimeError as error:
+        audit_event("finviz_refresh_failed", error=type(error.__cause__).__name__)
+        raise HTTPException(
+            status_code=502,
+            detail="Finviz refresh failed safely; existing LMIO data was preserved.",
+        ) from error
+    audit_event(
+        "finviz_refresh_completed",
+        equities_received=result["equities_received"],
+        candidates_found=result["candidates_found"],
+        telegram=result["telegram"],
+    )
+    return result
+
+
+@app.get(
+    "/api/v1/providers/finviz/refresh",
+    tags=["research"],
+    dependencies=[Depends(require_cron)],
+)
+def scheduled_finviz_refresh() -> dict[str, object]:
+    """Run the protected server-side refresh invoked by Vercel Cron."""
+
+    return _refresh_finviz()
+
+
+@app.post(
+    "/api/v1/providers/finviz/refresh",
+    tags=["research"],
+    dependencies=[Depends(require_admin)],
+)
+def manual_finviz_refresh() -> dict[str, object]:
+    """Allow an authorised operator to refresh without waiting for the schedule."""
+
+    return _refresh_finviz()
+
+
+def _refresh_official_news() -> dict[str, object]:
+    result = get_service().refresh_official_news()
+    audit_event("official_news_refresh_completed", result=result)
+    return result
+
+
+@app.get(
+    "/api/v1/providers/news/refresh",
+    tags=["research"],
+    dependencies=[Depends(require_cron)],
+)
+def scheduled_official_news_refresh() -> dict[str, object]:
+    """Refresh allowlisted government releases and SEC events server-side."""
+
+    return _refresh_official_news()
+
+
+@app.post(
+    "/api/v1/providers/news/refresh",
+    tags=["research"],
+    dependencies=[Depends(require_admin)],
+)
+def manual_official_news_refresh() -> dict[str, object]:
+    return _refresh_official_news()
 
 
 @app.post("/api/v1/demo/run", tags=["research"], dependencies=[Depends(require_admin)])
@@ -101,12 +367,50 @@ def latest_report() -> dict[str, Any]:
     return report
 
 
+@app.get("/api/market/regime", tags=["research"])
+def market_regime() -> dict[str, Any]:
+    return dict(latest_report()["regime"])
+
+
+@app.get("/api/market/premarket-brief", tags=["research"])
+def premarket_brief() -> dict[str, Any]:
+    report = latest_report()
+    return {
+        "generated_at": report["generated_at"],
+        "data_mode": report["data_mode"],
+        "message_zh": report["message_zh"],
+        "warnings": report["warnings"],
+    }
+
+
 @app.get("/api/v1/screens/latest", tags=["research"])
-def latest_screen() -> dict[str, Any]:
+def latest_screen() -> list[dict[str, Any]]:
     screen = get_service().store.latest_json("screen_runs")
     if screen is None:
         raise HTTPException(status_code=404, detail="No screen run exists.")
+    if not isinstance(screen, list):
+        raise HTTPException(status_code=500, detail="Stored screen run is malformed.")
     return screen
+
+
+app.get("/api/screens", tags=["research"])(latest_screen)
+
+
+@app.post(
+    "/api/screens/run",
+    tags=["research"],
+    dependencies=[Depends(require_admin)],
+)
+def run_screens() -> dict[str, object]:
+    return run_demo()
+
+
+@app.get("/api/screens/{run_id}/results", tags=["research"])
+def screen_results(run_id: int) -> dict[str, Any]:
+    for record in get_service().store.history_json("screen_runs", 200):
+        if record["id"] == run_id:
+            return dict(record)
+    raise HTTPException(status_code=404, detail="Screen run not found.")
 
 
 @app.get("/api/v1/reports/history", tags=["research"])
@@ -117,6 +421,95 @@ def report_history(limit: int = 50) -> list[dict[str, Any]]:
 @app.get("/api/v1/valuations/history", tags=["valuation"])
 def valuation_history(limit: int = 50) -> list[dict[str, Any]]:
     return get_service().store.history_json("valuation_runs", limit)
+
+
+@app.get("/api/v1/candidates", tags=["research"])
+def candidate_history(limit: int = 50) -> list[dict[str, Any]]:
+    return get_service().store.history_json("candidate_transitions", limit)
+
+
+app.get("/api/candidates", tags=["research"])(candidate_history)
+
+
+@app.get("/api/candidates/{symbol}", tags=["research"])
+def candidate_by_symbol(symbol: str) -> list[dict[str, Any]]:
+    normalised = symbol.upper()
+    screen = get_service().store.latest_json("screen_runs") or []
+    result = [item for item in screen if item["symbol"].upper() == normalised]
+    if not result:
+        raise HTTPException(status_code=404, detail="Candidate not found.")
+    return result
+
+
+@app.get("/api/v1/research", tags=["research"])
+def research_history(limit: int = 50) -> list[dict[str, Any]]:
+    return get_service().store.history_json("research_packs", limit)
+
+
+@app.get("/api/v1/news", tags=["research"])
+def news_history(limit: int = 100) -> list[dict[str, Any]]:
+    return get_service().latest_news(limit)
+
+
+@app.get("/api/v1/ownership", tags=["research"])
+def ownership_history(limit: int = 50) -> list[dict[str, Any]]:
+    return get_service().store.history_json("ownership_events", limit)
+
+
+@app.get("/api/v1/plans", tags=["research"])
+def plan_history(limit: int = 50) -> list[dict[str, Any]]:
+    return get_service().store.history_json("conditional_plans", limit)
+
+
+@app.get("/api/v1/signals", tags=["research"])
+def signal_history(limit: int = 50) -> list[dict[str, Any]]:
+    return get_service().store.history_json("signals", limit)
+
+
+@app.get("/api/v1/performance", tags=["research"])
+def performance_history(limit: int = 50) -> list[dict[str, Any]]:
+    return get_service().store.history_json("strategy_performance", limit)
+
+
+@app.get("/api/v1/watchlists", tags=["research"])
+def watchlist_history(limit: int = 50) -> list[dict[str, Any]]:
+    return get_service().store.history_json("watchlists", limit)
+
+
+class FeedbackInput(BaseModel):
+    subject_type: str = Field(min_length=1, max_length=80)
+    subject_id: str = Field(min_length=1, max_length=120)
+    decision: str = Field(pattern="^(approved|rejected|needs_revision)$")
+    actor: str = Field(min_length=1, max_length=120)
+    reason: str = Field(min_length=1, max_length=1000)
+    evidence_urls: list[str] = Field(default_factory=list, max_length=20)
+
+
+@app.post(
+    "/api/v1/feedback",
+    tags=["research"],
+    dependencies=[Depends(require_admin)],
+)
+def record_feedback(payload: FeedbackInput) -> dict[str, Any]:
+    record = payload.model_dump(mode="json")
+    record_id = get_service().store.append_json(
+        "user_feedback",
+        {
+            "subject_type": payload.subject_type,
+            "subject_id": payload.subject_id,
+            "decision": payload.decision,
+            "actor": payload.actor,
+            "payload": record,
+        },
+    )
+    audit_event(
+        "user_feedback_recorded",
+        subject_type=payload.subject_type,
+        subject_id=payload.subject_id,
+        decision=payload.decision,
+        actor=payload.actor,
+    )
+    return {"id": record_id, "status": "recorded"}
 
 
 @app.post(
@@ -139,6 +532,252 @@ def research_candidates() -> list[dict[str, object]]:
         return get_service().research_latest()
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@app.post(
+    "/api/candidates/{symbol}/research",
+    tags=["research"],
+    dependencies=[Depends(require_admin)],
+)
+def research_candidate(symbol: str) -> dict[str, object]:
+    try:
+        records = get_service().research_latest(limit=20)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    for record in records:
+        if str(record["symbol"]).upper() == symbol.upper():
+            return record
+    raise HTTPException(status_code=404, detail="Candidate not found in latest screen.")
+
+
+@app.post(
+    "/api/candidates/{symbol}/feedback",
+    tags=["research"],
+    dependencies=[Depends(require_admin)],
+)
+def candidate_feedback(symbol: str, payload: FeedbackInput) -> dict[str, Any]:
+    if payload.subject_id.upper() != symbol.upper():
+        raise HTTPException(status_code=422, detail="Feedback subject does not match symbol.")
+    return record_feedback(payload)
+
+
+@app.post(
+    "/api/valuation/{symbol}/run",
+    tags=["valuation"],
+    dependencies=[Depends(require_admin)],
+)
+def run_symbol_valuation(symbol: str) -> dict[str, object]:
+    if symbol.upper() != "META":
+        raise HTTPException(
+            status_code=409,
+            detail="No approved point-in-time valuation input exists for this symbol.",
+        )
+    return get_service().run_meta_acceptance()
+
+
+@app.get("/api/valuation/{symbol}/history", tags=["valuation"])
+def symbol_valuation_history(symbol: str) -> list[dict[str, Any]]:
+    normalised = symbol.upper()
+    return [
+        record
+        for record in get_service().store.history_json("valuation_runs", 200)
+        if record["symbol"].upper() == normalised
+    ]
+
+
+@app.get("/api/valuation/{symbol}/latest", tags=["valuation"])
+def latest_symbol_valuation(symbol: str) -> dict[str, Any]:
+    history = symbol_valuation_history(symbol)
+    if not history:
+        raise HTTPException(status_code=404, detail="Valuation not found.")
+    return history[0]
+
+
+app.get("/api/news/events", tags=["research"])(news_history)
+
+
+@app.post(
+    "/api/news/check",
+    tags=["research"],
+    dependencies=[Depends(require_admin)],
+)
+def check_news() -> dict[str, Any]:
+    return {
+        "status": "read_only_check",
+        "stored_events": get_service().store.counts()["news_events"],
+        "external_provider_call": False,
+    }
+
+
+class NewsAnalysisInput(BaseModel):
+    evidence_urls: list[str] = Field(default_factory=list, max_length=20)
+    reaction: ReactionEvidence | None = None
+
+
+@app.post(
+    "/api/news/{event_id}/analyse",
+    tags=["research"],
+    dependencies=[Depends(require_admin)],
+)
+def analyse_news_event(event_id: str, payload: NewsAnalysisInput) -> dict[str, Any]:
+    stored = get_service().store.news_event(event_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="News event not found.")
+    event = NewsEvent.model_validate(stored)
+    impact = news_impact_score(event)
+    plan = propose_news_plan(
+        event,
+        price_confirmation=False,
+        evidence_urls=payload.evidence_urls,
+        reaction=payload.reaction,
+    )
+    plan_payload = plan.model_dump(mode="json") if plan is not None else None
+    plan_id = None
+    if plan_payload is not None:
+        plan_id = get_service().store.append_json(
+            "conditional_plans",
+            {
+                "symbol": plan.symbol,
+                "state": plan.state,
+                "version": plan.version,
+                "payload": plan_payload,
+            },
+        )
+    audit_event(
+        "news_event_analysed",
+        event_id=event_id,
+        impact_score=impact,
+        conditional_plan_created=plan_id is not None,
+    )
+    return {
+        "event_id": event_id,
+        "impact_score": impact,
+        "priority": "P0" if impact >= 85 else "P1" if impact >= 70 else "watch",
+        "reaction_confirmed": payload.reaction.confirmed if payload.reaction else False,
+        "conditional_plan_id": plan_id,
+        "conditional_plan": plan_payload,
+        "order_created": False,
+    }
+
+
+@app.get("/api/institutions/{symbol}", tags=["research"])
+def institution_records(symbol: str) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in ownership_history(200)
+        if item["symbol"].upper() == symbol.upper()
+        and item["event_type"] == "institutional_holdings"
+    ]
+
+
+@app.get("/api/insiders/{symbol}", tags=["research"])
+def insider_records(symbol: str) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in ownership_history(200)
+        if item["symbol"].upper() == symbol.upper() and item["event_type"] == "insider_transaction"
+    ]
+
+
+app.get("/api/trade-plans", tags=["research"])(plan_history)
+app.get("/api/reports", tags=["research"])(report_history)
+app.get("/api/strategy-performance", tags=["research"])(performance_history)
+
+
+@app.get("/api/options/{symbol}", tags=["deferred"])
+def deferred_options(symbol: str) -> dict[str, str]:
+    raise HTTPException(
+        status_code=409,
+        detail=f"Options flow is deferred in V1; no provider is active for {symbol.upper()}.",
+    )
+
+
+@app.post(
+    "/api/trade-plans",
+    tags=["research"],
+    dependencies=[Depends(require_admin)],
+)
+def create_trade_plan(plan: ConditionalPlan) -> dict[str, Any]:
+    if plan.state is not PlanState.DRAFT:
+        raise HTTPException(status_code=422, detail="New plans must start in DRAFT.")
+    payload = plan.model_dump(mode="json")
+    record_id = get_service().store.append_json(
+        "conditional_plans",
+        {
+            "symbol": plan.symbol,
+            "state": plan.state,
+            "version": plan.version,
+            "payload": payload,
+        },
+    )
+    audit_event("conditional_plan_created", symbol=plan.symbol, plan_id=record_id)
+    return {"id": record_id, "plan": payload}
+
+
+class PlanTransitionInput(BaseModel):
+    target: PlanState
+    actor: str = Field(min_length=1, max_length=120)
+    reason: str = Field(min_length=1, max_length=1000)
+    evidence_urls: list[str] = Field(default_factory=list, max_length=20)
+
+
+@app.post(
+    "/api/trade-plans/{plan_id}/transition",
+    tags=["research"],
+    dependencies=[Depends(require_admin)],
+)
+def transition_trade_plan(plan_id: int, payload: PlanTransitionInput) -> dict[str, Any]:
+    record = next(
+        (
+            item
+            for item in get_service().store.history_json("conditional_plans", 200)
+            if item["id"] == plan_id
+        ),
+        None,
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Trade plan not found.")
+    plan = ConditionalPlan.model_validate(record["payload"])
+    try:
+        updated, event = transition_with_evidence(
+            plan,
+            payload.target,
+            actor=payload.actor,
+            reason=payload.reason,
+            evidence_urls=payload.evidence_urls,
+            paper_trading_enabled=False,
+        )
+    except (ValueError, PermissionError) as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    event_payload = event.model_dump(mode="json")
+    get_service().store.append_json(
+        "trade_plan_transitions",
+        {
+            "symbol": event.symbol,
+            "previous_state": event.previous_state,
+            "new_state": event.new_state,
+            "payload": event_payload,
+        },
+    )
+    updated_id = get_service().store.append_json(
+        "conditional_plans",
+        {
+            "symbol": updated.symbol,
+            "state": updated.state,
+            "version": updated.version,
+            "payload": updated.model_dump(mode="json"),
+        },
+    )
+    audit_event(
+        "conditional_plan_transitioned",
+        source_plan_id=plan_id,
+        updated_plan_id=updated_id,
+        symbol=event.symbol,
+        previous_state=event.previous_state,
+        new_state=event.new_state,
+        actor=event.actor,
+    )
+    return {"id": updated_id, "event": event_payload}
 
 
 @app.post(
@@ -173,6 +812,16 @@ def command_centre() -> str:
         生成明确标注的演示回放。</p></section>
         """
     else:
+        service = get_service()
+        provider_states = providers_health()
+        provider_summary = "；".join(
+            f"{name}={details['state']}" for name, details in provider_states.items()
+        )
+        urgent_events = [
+            event
+            for event in service.latest_news(limit=50)
+            if event.get("significance", 0) >= 80 and event.get("confidence", 0) >= 0.7
+        ][:5]
         top_rows = "".join(
             (
                 "<tr>"
@@ -186,20 +835,52 @@ def command_centre() -> str:
             for item in report["top_10"]
         )
         warnings = "".join(f"<li>{escape(item)}</li>" for item in report["warnings"])
+        top_cards = "".join(
+            (
+                "<article>"
+                f"<strong>{escape(item['symbol'])}｜{escape(item['strategy'])}</strong>"
+                f"<p>{escape(item['what_changed'])}</p>"
+                f"<p>确认：{escape(item['confirmation_condition'])}</p>"
+                f"<p>失效：{escape(item['stop_reference'])}</p>"
+                "</article>"
+            )
+            for item in report.get("decision_cards", [])
+        )
+        urgent = (
+            "".join(f"<li>{escape(event['headline'])}</li>" for event in urgent_events)
+            or "<li>无已验证 P0/P1 事件</li>"
+        )
+        risk_blocks = report["regime"].get("blocked_sectors", []) + report["regime"].get(
+            "blocked_symbols", []
+        )
+        risk_text = "、".join(risk_blocks) if risk_blocks else "无主动封锁"
         body = f"""
         <h1>LMIO 指挥中心</h1>
         <p class="muted">中文优先 · 美股研究与决策支持 · 不执行交易</p>
         <div class="grid">
           <section><h2>市场状态</h2><strong>{escape(report["regime"]["label"])}</strong>
           <p>置信度 {report["regime"]["confidence"]:.0%}</p></section>
-          <section><h2>每日漏斗</h2><pre>{escape(str(report["funnel"]))}</pre></section>
-          <section><h2>安全边界</h2><strong>CAN_TRADE = false</strong>
-          <p>LIVE / PAPER 均关闭</p></section>
+          <section><h2>每日漏斗</h2>
+          <p>检查 {report["funnel"].get("universe_checked", 0)} 只股票</p>
+          <p>基础范围 {report["funnel"].get("investable", 0)} 只 ·
+          优先机会 {report["funnel"].get("priority_opportunities", 0)} 只</p></section>
+          <section><h2>安全边界</h2><strong>不执行交易</strong>
+          <p>实盘与模拟交易均关闭</p></section>
         </div>
+        <div class="grid">
+          <section><h2>数据新鲜度</h2><p>{escape(report["generated_at"])}</p>
+          <p>模式：{escape(report["data_mode"])}</p></section>
+          <section><h2>提供商状态</h2><p>{escape(provider_summary)}</p></section>
+          <section><h2>下一计划事件</h2><p>按 Hermes 清单执行下一只读周期；未启用外部调度。</p>
+          <p>风险封锁：{escape(risk_text)}</p></section>
+        </div>
+        <section><h2>Top 3 决策卡</h2><div class="grid">{top_cards or "<p>无合格项</p>"}</div>
+        </section>
+        <section><h2>P0 / P1 事件</h2><ul>{urgent}</ul></section>
         <section><h2>Top 10 观察名单</h2>
         <table><thead><tr><th>代码</th><th>公司</th><th>策略</th><th>总分</th>
         <th>数据置信度</th></tr></thead><tbody>{top_rows}</tbody></table></section>
-        <section><h2>中文简报</h2><pre>{escape(report["message_zh"])}</pre>
+        <section><h2>中文简报</h2><p>{escape(report["message_zh"])}</p>
         <ul>{warnings}</ul></section>
         """
     nav = " ".join(
@@ -247,9 +928,14 @@ def dashboard_page(page: str) -> str:
     elif page == "system-health":
         status = json_status(service.store.counts())
     elif page == "institutional-insider":
-        status = "基础解析模块待数据源验证；不以机构或内部人信息单独触发建议。"
+        count = service.store.counts()["ownership_events"]
+        status = f"已保存 {count} 个版本化持仓事件；不以机构或内部人信息单独触发建议。"
     elif page == "conditional-plans":
-        status = "条件计划仅用于研究确认、失效和到期状态；不存在订单执行路径。"
+        count = service.store.counts()["trade_plan_transitions"]
+        status = (
+            f"已保存 {count} 个状态转换证据。条件计划只用于研究确认；"
+            "PAPER_READY / PAPER_OPEN 由安全配置阻止。"
+        )
     elif page == "reports-journal":
         status = f"已保存 {service.store.counts()['reports']} 份版本化报告。"
     else:
@@ -267,7 +953,10 @@ def dashboard_page(page: str) -> str:
     section{{background:#fff;border:1px solid #ddd;padding:28px;margin-top:24px}}
     </style></head><body><main><nav>{nav}</nav><section>
     <p>LEON MARKET INTELLIGENCE OS</p><h1>{escape(DASHBOARD_PAGES[page])}</h1>
-    <p>{escape(status)}</p><p><a href="/">返回指挥中心</a></p>
+    <p>{escape(status)}</p><h2>如何使用</h2>
+    <p>这是运行服务的简要诊断入口。日常研究请使用受保护的 LMIO 工作台，
+    其中会以中文显示结论、评分、风险和下一步，而不会展示技术记录。</p>
+    <p><a href="/">返回指挥中心</a></p>
     </section></main></body></html>"""
 
 
