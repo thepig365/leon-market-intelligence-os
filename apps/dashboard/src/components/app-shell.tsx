@@ -29,7 +29,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <Navigation />
       <main>{children}</main>
       <footer>
-        <p>Bayview OS 管理项目记忆；LMIO 保存详细市场运行证据。</p>
+        <p>Bayview OS 管理项目记忆；LMIO 保留可复核的研究依据。</p>
         <p>研究工具，不构成投资建议，不具备订单执行能力。</p>
       </footer>
     </>

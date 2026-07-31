@@ -287,7 +287,7 @@ export function TopTenPanel({ result }: { result: LMIOResult }) {
               })
             : "待确认"}
         </p>
-        <p>原始运行证据保留在后台，不在日常界面展示。</p>
+        <p>详细审计资料保留在后台，不在日常界面展示。</p>
       </div>
     </section>
   );
