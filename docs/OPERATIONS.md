@@ -20,9 +20,12 @@ recorded.
 
 ## Routine jobs
 
-`config/hermes_jobs.json` defines continuous, premarket, after-open,
-after-close and weekend schedules. The manifest is descriptive in V1; enabling
-an external scheduler is a protected deployment action.
+`config/hermes_jobs.json` describes the broader continuous, premarket,
+after-open, after-close and weekend operating model. The protected Vercel
+runtime implements one weekday Finviz refresh through `vercel.json`. Vercel
+sends `Authorization: Bearer <CRON_SECRET>` to the refresh endpoint. Preview
+deployments do not run cron jobs; activation therefore remains a protected
+production deployment action.
 
 The safe local workflow is:
 
@@ -32,6 +35,12 @@ The safe local workflow is:
 4. generate the Chinese report;
 5. review evidence and warnings;
 6. record outcomes later without overwriting the original run.
+
+The automatic Finviz run performs steps 1–4 and then queues or sends the
+Chinese Telegram brief. It preserves the previous successful run if Finviz is
+unavailable. Use the admin-protected manual refresh endpoint for an additional
+operator-requested update; do not poll more often than the provider licence and
+rate limits permit.
 
 The synthetic demo is for replay testing only:
 
@@ -55,6 +64,9 @@ Create a verified local backup using the procedure in `BACKUP_RECOVERY.md`.
   queued before credentials are configured become eligible for delivery after
   valid credentials are supplied.
 - Research-worker failure must fall back to deterministic research packs.
+- Finviz HTTP 429 triggers at most two waits and three total attempts. Other
+  provider failures are recorded by error type only; the token and request URL
+  are never written to logs.
 
 ## Local Telegram credential handling
 

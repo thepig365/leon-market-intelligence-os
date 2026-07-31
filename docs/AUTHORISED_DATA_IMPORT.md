@@ -71,6 +71,30 @@ The authorised raw Finviz export is licensed input. Keep it outside git and
 Bayview OS. The adapter does not store a password, browser cookie or Finviz
 session and does not scrape Finviz pages.
 
+## Official Finviz Elite API
+
+The protected runtime may use Finviz Elite's official API instead of a manual
+file. Generate the API token in the subscriber account and store it only as the
+encrypted server environment variable `FINVIZ_API_TOKEN`. LMIO never stores a
+Finviz password, browser cookie or browser session.
+
+The adapter:
+
+- calls only Finviz's fixed HTTPS screener-export endpoint;
+- requests the explicit columns LMIO can normalise;
+- enforces the same 20 MiB, 20,000-row, eligibility and completeness gates as
+  the manual export;
+- respects Finviz's one-request-per-five-seconds limit and uses bounded
+  exponential backoff for HTTP 429;
+- records only normalised internal research snapshots, never the API token;
+- keeps the data inside Leon's licensed, private LMIO use and does not
+  redistribute or republish the licensed dataset.
+
+Finviz does not supply every LMIO evidence category. News, SEC filings,
+valuation inputs and pattern confirmation remain visibly unavailable until a
+separately authorised source provides them. LMIO must never present missing
+coverage as a working connection.
+
 The import:
 
 1. validates and normalises every row before running screens;

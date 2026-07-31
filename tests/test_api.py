@@ -99,6 +99,41 @@ def test_mutating_api_is_closed_without_admin_key() -> None:
     assert news_analysis.status_code == 503
 
 
+def test_scheduled_finviz_refresh_requires_cron_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        environment="production",
+        cron_secret="scheduled-test-key",
+    )
+
+    class RefreshService:
+        def refresh_finviz(self, **_kwargs: object) -> dict[str, object]:
+            return {
+                "status": "completed",
+                "provider": "finviz_elite_api",
+                "equities_received": 100,
+                "candidates_found": 10,
+                "telegram": "sent",
+                "generated_at": "2026-07-31T01:00:00Z",
+            }
+
+    monkeypatch.setattr("lmio.security.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.main.get_service", RefreshService)
+
+    denied = request("GET", "/api/v1/providers/finviz/refresh")
+    allowed = request(
+        "GET",
+        "/api/v1/providers/finviz/refresh",
+        headers={"authorization": "Bearer scheduled-test-key"},
+    )
+
+    assert denied.status_code == 401
+    assert allowed.status_code == 200
+    assert allowed.json()["telegram"] == "sent"
+
+
 def test_read_only_research_api_surface_is_available() -> None:
     paths = (
         "/api/v1/candidates",

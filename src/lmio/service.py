@@ -13,11 +13,13 @@ from lmio.domain import (
     SecuritySnapshot,
     ValuationResult,
 )
+from lmio.providers.finviz_api import FinvizAPIProvider
 from lmio.reports import build_daily_report, classify_regime, unverified_regime
 from lmio.research import build_research_pack
 from lmio.screens import run_core_screens
 from lmio.store import RuntimeStore
 from lmio.supabase_store import SupabaseRuntimeStore
+from lmio.telegram import MessageKind, queue_or_send
 from lmio.universe import UniversePolicy, build_investable_universe
 from lmio.valuation import run_valuation
 
@@ -41,6 +43,56 @@ class LMIOService:
             data_mode="synthetic_replay",
             valuations={valuation.symbol: valuation},
         )
+
+    def refresh_finviz(
+        self,
+        *,
+        provider: FinvizAPIProvider | None = None,
+        message_kind: MessageKind = MessageKind.PREMARKET,
+    ) -> dict[str, object]:
+        """Refresh authorised Finviz data and deliver one concise Telegram report."""
+
+        provider = provider or FinvizAPIProvider(
+            self.settings.finviz_api_token.get_secret_value()
+        )
+        try:
+            snapshots = provider.snapshots()
+        except Exception as error:
+            self.store.append_json(
+                "provider_health",
+                {
+                    "provider": provider.name,
+                    "state": "unavailable",
+                    "payload": {"detail": type(error).__name__},
+                },
+            )
+            raise RuntimeError("Finviz refresh failed safely") from error
+
+        health = provider.health()
+        self.store.append_json(
+            "provider_health",
+            {
+                "provider": health.provider,
+                "state": health.state.value,
+                "payload": {"detail": health.detail},
+            },
+        )
+        report = self.run_daily(snapshots, data_mode=provider.name)
+        delivery = queue_or_send(
+            self.store,
+            str(report["message_zh"]),
+            bot_token=self.settings.telegram_bot_token,
+            chat_id=self.settings.telegram_chat_id,
+            kind=message_kind,
+        )
+        return {
+            "status": "completed",
+            "provider": provider.name,
+            "equities_received": len(snapshots),
+            "candidates_found": len(report["top_10"]),
+            "telegram": delivery,
+            "generated_at": report["generated_at"],
+        }
 
     def run_daily(
         self,

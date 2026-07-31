@@ -27,6 +27,8 @@ def test_service_readiness_does_not_claim_integrations_are_working(tmp_path: Pat
     assert settings.integration_readiness() == {
         "sec_configured": False,
         "telegram_configured": False,
+        "finviz_configured": False,
+        "scheduled_refresh_configured": False,
         "openai_research_configured": False,
         "admin_api_key_configured": False,
         "read_api_key_configured": False,

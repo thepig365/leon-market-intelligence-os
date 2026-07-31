@@ -110,6 +110,7 @@ export function TopTenPanel({ result }: { result: LMIOResult }) {
   const funnel = report.funnel ?? {};
   const regimeVerified =
     report.regime?.label && report.regime.label !== "Unverified";
+  const finvizConnected = report.data_mode?.startsWith("finviz_elite") === true;
 
   return (
     <section className="researchView" aria-live="polite">
@@ -137,10 +138,16 @@ export function TopTenPanel({ result }: { result: LMIOResult }) {
           <p className="eyebrow">MARKET CHECK</p>
           <h2>{regimeVerified ? report.regime?.label : "市场环境待验证"}</h2>
           <p>
-            当前使用 Finviz 授权快照进行初筛。候选仅供进一步研究，不是买入建议。
+            {finvizConnected
+              ? "当前使用 Finviz 授权数据进行初筛。候选仅供进一步研究，不是买入建议。"
+              : "当前报告不是来自已验证的 Finviz 实时连接，仅用于系统检查。"}
           </p>
         </div>
-        <span className="status status-ready">Finviz 已连接</span>
+        <span
+          className={`status status-${finvizConnected ? "ready" : "pending"}`}
+        >
+          {finvizConnected ? "Finviz 已连接" : "Finviz 待验证"}
+        </span>
       </div>
 
       {candidates.length ? (

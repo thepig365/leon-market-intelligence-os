@@ -1,6 +1,5 @@
 """LMIO FastAPI application and local read-only command centre."""
 
-import json
 from functools import lru_cache
 from html import escape
 from typing import Any
@@ -16,9 +15,14 @@ from lmio.domain import NewsEvent
 from lmio.news import news_impact_score
 from lmio.news_plan import ReactionEvidence, propose_news_plan
 from lmio.plans import ConditionalPlan, PlanState, transition_with_evidence
-from lmio.security import require_admin, valid_read_credential
+from lmio.security import (
+    require_admin,
+    require_cron,
+    valid_cron_credential,
+    valid_read_credential,
+)
 from lmio.service import LMIOService
-from lmio.telegram import queue_or_send
+from lmio.telegram import MessageKind, queue_or_send
 
 app = FastAPI(
     title="Leon Market Intelligence OS",
@@ -47,8 +51,13 @@ DASHBOARD_PAGES = {
 async def require_runtime_read_key(request: Request, call_next: Any) -> Response:
     """Keep runtime evidence private while leaving a minimal health probe."""
 
-    if request.url.path not in {"/health", "/favicon.ico"} and not valid_read_credential(
-        request.headers.get("x-lmio-read-key")
+    read_allowed = valid_read_credential(request.headers.get("x-lmio-read-key"))
+    cron_allowed = (
+        request.url.path == "/api/v1/providers/finviz/refresh"
+        and valid_cron_credential(request.headers.get("authorization"))
+    )
+    if request.url.path not in {"/health", "/favicon.ico"} and not (
+        read_allowed or cron_allowed
     ):
         return JSONResponse(
             status_code=401,
@@ -129,6 +138,46 @@ def providers_health() -> dict[str, Any]:
 
 
 app.get("/api/providers/health", tags=["system"])(providers_health)
+
+
+def _refresh_finviz(message_kind: MessageKind = MessageKind.PREMARKET) -> dict[str, object]:
+    try:
+        result = get_service().refresh_finviz(message_kind=message_kind)
+    except RuntimeError as error:
+        audit_event("finviz_refresh_failed", error=type(error.__cause__).__name__)
+        raise HTTPException(
+            status_code=502,
+            detail="Finviz refresh failed safely; existing LMIO data was preserved.",
+        ) from error
+    audit_event(
+        "finviz_refresh_completed",
+        equities_received=result["equities_received"],
+        candidates_found=result["candidates_found"],
+        telegram=result["telegram"],
+    )
+    return result
+
+
+@app.get(
+    "/api/v1/providers/finviz/refresh",
+    tags=["research"],
+    dependencies=[Depends(require_cron)],
+)
+def scheduled_finviz_refresh() -> dict[str, object]:
+    """Run the protected server-side refresh invoked by Vercel Cron."""
+
+    return _refresh_finviz()
+
+
+@app.post(
+    "/api/v1/providers/finviz/refresh",
+    tags=["research"],
+    dependencies=[Depends(require_admin)],
+)
+def manual_finviz_refresh() -> dict[str, object]:
+    """Allow an authorised operator to refresh without waiting for the schedule."""
+
+    return _refresh_finviz()
 
 
 @app.post("/api/v1/demo/run", tags=["research"], dependencies=[Depends(require_admin)])

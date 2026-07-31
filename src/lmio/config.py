@@ -64,6 +64,14 @@ class Settings(BaseSettings):
     )
     telegram_bot_token: str = Field(default="", validation_alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str = Field(default="", validation_alias="TELEGRAM_CHAT_ID")
+    finviz_api_token: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="FINVIZ_API_TOKEN",
+    )
+    cron_secret: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="CRON_SECRET",
+    )
     openai_api_key: SecretStr = Field(
         default=SecretStr(""),
         validation_alias="OPENAI_API_KEY",
@@ -115,6 +123,8 @@ class Settings(BaseSettings):
             "telegram_configured": bool(
                 self.telegram_bot_token.strip() and self.telegram_chat_id.strip()
             ),
+            "finviz_configured": bool(self.finviz_api_token.get_secret_value()),
+            "scheduled_refresh_configured": bool(self.cron_secret.get_secret_value()),
             "openai_research_configured": bool(
                 self.openai_api_key.get_secret_value() and self.openai_model.strip()
             ),

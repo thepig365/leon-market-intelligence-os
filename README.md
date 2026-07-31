@@ -25,6 +25,8 @@ evidence references. It does not create a duplicate project-memory system.
 - official SEC EDGAR read-only adapter and data-contract tests;
 - structured 13F, Schedule 13D/13G and Form 4 ownership parsing;
 - bounded, freshness-checked and deduplicated authorised CSV ingestion;
+- server-side Finviz Elite official API ingestion with bounded retries, caching
+  through immutable snapshots and no stored browser session;
 - official-source news deduplication and impact scoring;
 - directional reaction confirmation using abnormal return, relative volume,
   VWAP, opening-range structure and gap retention;
@@ -88,6 +90,14 @@ The input must satisfy `docs/AUTHORISED_DATA_IMPORT.md`. A successful parse is
 not evidence that the upstream provider is authorised; Leon's provider decision
 and the export's provenance remain required.
 
+In a protected deployment, the official Finviz Elite API can refresh the same
+normalised pipeline automatically. The API token remains server-side, the
+scheduled endpoint requires `CRON_SECRET`, and the current schedule performs
+one weekday refresh before the United States market session. An authorised
+operator can also request a refresh without waiting for the schedule. Each
+successful run stores the snapshot, applies the deterministic screens and
+queues or sends one concise Chinese Telegram brief.
+
 Then open:
 
 - FastAPI fallback command centre: `http://127.0.0.1:8000/`
@@ -115,6 +125,9 @@ header. The trusted local CLI does not expose a remote mutation surface.
 
 - `SEC_USER_AGENT`: a fair-access identity required by the SEC;
 - `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`: priority alert delivery;
+- `FINVIZ_API_TOKEN`: official Finviz Elite personal-use API access, server-side
+  only;
+- `CRON_SECRET`: protects the scheduled Finviz refresh;
 - `OPENAI_API_KEY` and `LMIO_OPENAI_MODEL`: optional server-side,
   evidence-only research synthesis; both are blank and inactive by default;
 - `LMIO_ADMIN_API_KEY`: protects mutating HTTP endpoints.

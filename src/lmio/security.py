@@ -28,3 +28,25 @@ def valid_read_credential(value: str | None) -> bool:
     if not expected:
         return get_settings().environment in {"local", "test"}
     return bool(value and hmac.compare_digest(value, expected))
+
+
+def valid_cron_credential(value: str | None) -> bool:
+    """Validate Vercel's server-side scheduled request credential."""
+
+    expected = get_settings().cron_secret.get_secret_value()
+    if not expected or not value or not value.startswith("Bearer "):
+        return False
+    supplied = value.removeprefix("Bearer ").strip()
+    return bool(supplied and hmac.compare_digest(supplied, expected))
+
+
+def require_cron(
+    authorization: Annotated[str | None, Header()] = None,
+) -> None:
+    if not get_settings().cron_secret.get_secret_value():
+        raise HTTPException(
+            status_code=503,
+            detail="Scheduled refresh is disabled until CRON_SECRET is configured.",
+        )
+    if not valid_cron_credential(authorization):
+        raise HTTPException(status_code=401, detail="Invalid scheduled refresh credential.")

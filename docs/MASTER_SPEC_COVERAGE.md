@@ -19,7 +19,7 @@ external provider or protected production environment has been activated.
 | Requirement | Status | Evidence |
 | --- | --- | --- |
 | Investability and liquidity universe | Implemented | `universe.py`, tests |
-| Authorised current-data export | Implemented with freshness, timezone, duplicate, size, row-count and completeness gates; external authorised export still pending | `providers/csv_snapshot.py`, `docs/AUTHORISED_DATA_IMPORT.md`, tests |
+| Authorised current-data ingestion | Manual CSV and official Finviz Elite API adapters implemented with freshness, timezone, duplicate, size, row-count, retry and completeness gates; live API verification still pending | `providers/csv_snapshot.py`, `providers/finviz_api.py`, `docs/AUTHORISED_DATA_IMPORT.md`, tests |
 | Independent V1 strategy screens | Implemented | `screens.py` |
 | Quality growth, revisions, institutional, activist, insider, QARP, PEAD, news, oversold, short squeeze | Implemented | deterministic combination rules and tests |
 | Four dimension scoring | Implemented | `scoring.py` |
