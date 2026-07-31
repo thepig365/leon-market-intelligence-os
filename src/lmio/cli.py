@@ -24,6 +24,7 @@ def main() -> None:
             "import-finviz",
             "meta-acceptance",
             "refresh-sec",
+            "refresh-news",
             "research-latest",
             "status",
         ),
@@ -100,6 +101,8 @@ def main() -> None:
             service.store,
             settings.parsed_sec_watchlist(),
         )
+    elif args.command == "refresh-news":
+        payload = service.refresh_official_news()
     elif args.command == "research-latest":
         payload = service.research_latest()
     elif args.command == "meta-acceptance":

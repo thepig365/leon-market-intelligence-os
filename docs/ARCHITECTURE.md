@@ -55,8 +55,15 @@ silently replaced by AI. Re-running the pipeline appends a new run.
 
 Adapters return bounded health states: disabled, ready, degraded or
 unavailable. Core logic consumes the LMIO domain model rather than provider
-response formats. The first official adapter is read-only SEC EDGAR. Market and
-fundamentals provider activation must pass a cost and terms review.
+response formats. Official read-only adapters cover SEC EDGAR, the Federal
+Reserve monetary-policy RSS feed and selected BLS macroeconomic RSS feeds.
+Market and fundamentals provider activation must pass a cost and terms review.
+
+Official news URLs are HTTPS allowlisted and response sizes are bounded. A
+single unavailable RSS endpoint degrades that refresh but does not discard
+healthy feeds or overwrite prior evidence. The latest Top 10 expands the SEC
+watchlist only through the official SEC ticker directory; unresolved symbols
+remain explicit rather than receiving a guessed CIK.
 
 ## Security
 

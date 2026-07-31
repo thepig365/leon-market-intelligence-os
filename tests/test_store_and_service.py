@@ -1,9 +1,12 @@
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
 from lmio.config import Settings
 from lmio.domain import NewsEvent, SecuritySnapshot
 from lmio.news import event_fingerprint
+from lmio.providers.official_rss import OfficialFeed, OfficialRSSProvider
+from lmio.providers.sec import SECProvider
 from lmio.service import MAX_OPERATIONAL_CANDIDATES, LMIOService
 
 
@@ -76,9 +79,7 @@ def test_authorised_refresh_persists_only_screen_candidates(tmp_path: Path) -> N
 
     candidate_symbols = {
         item["symbol"]
-        for item in (service.store.latest_json("screen_runs") or [])[
-            :MAX_OPERATIONAL_CANDIDATES
-        ]
+        for item in (service.store.latest_json("screen_runs") or [])[:MAX_OPERATIONAL_CANDIDATES]
     }
     stored_symbols = {
         item["symbol"]
@@ -174,3 +175,94 @@ def test_news_event_can_be_retrieved_by_stable_fingerprint(tmp_path: Path) -> No
     assert service.store.put_news_event(fingerprint, event.model_dump(mode="json")) is True
     assert service.store.news_event(fingerprint) == event.model_dump(mode="json")
     assert service.store.news_event("missing") is None
+
+
+def test_news_refresh_expands_sec_watchlist_from_latest_top_ten(tmp_path: Path) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "runtime.sqlite3",
+        sec_user_agent="LMIO research admin@example.test",
+        sec_watchlist="AAPL:320193,META:1326801",
+    )
+    service = LMIOService(settings)
+    service.store.append_json(
+        "reports",
+        {
+            "report_type": "daily",
+            "payload": {"top_10": [{"symbol": "TEST"}]},
+        },
+    )
+    feed = OfficialFeed(
+        name="test_feed",
+        url="https://www.bls.gov/feed/test.rss",
+        source="U.S. Bureau of Labor Statistics",
+        event_type="macro_test",
+        significance=90,
+    )
+    rss = b"""
+        <rss version="2.0"><channel><item>
+        <title>Official release</title>
+        <link>https://www.bls.gov/news.release/test.htm</link>
+        <pubDate>Fri, 31 Jul 2026 08:30:00 -0400</pubDate>
+        </item></channel></rss>
+    """
+
+    def sec_transport(url: str, _headers: dict[str, str]) -> bytes:
+        if url.endswith("company_tickers.json"):
+            return json.dumps(
+                {"0": {"cik_str": 1234567, "ticker": "TEST", "title": "Test Inc."}}
+            ).encode()
+        cik = url.rsplit("CIK", 1)[-1].removesuffix(".json")
+        return json.dumps(
+            {
+                "cik": cik,
+                "filings": {
+                    "recent": {
+                        "accessionNumber": [],
+                        "filingDate": [],
+                        "form": [],
+                        "primaryDocument": [],
+                    }
+                },
+            }
+        ).encode()
+
+    result = service.refresh_official_news(
+        macro_provider=OfficialRSSProvider((feed,), lambda *_: rss),
+        sec_provider=SECProvider(settings.sec_user_agent, sec_transport),
+    )
+
+    assert result["macro"]["inserted"] == 1
+    assert result["sec"]["symbols"] == 3
+    assert result["sec"]["unresolved_symbols"] == 0
+
+
+def test_latest_news_uses_publication_time_not_ingestion_order(tmp_path: Path) -> None:
+    service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
+    newer = NewsEvent(
+        headline="Newer release",
+        source="Official",
+        source_url="https://example.test/newer",
+        source_tier=1,
+        published_at=datetime(2026, 7, 31, tzinfo=UTC),
+        symbols=[],
+        event_type="macro_test",
+        significance=70,
+        surprise=0,
+        confidence=1,
+    )
+    older = newer.model_copy(
+        update={
+            "headline": "Older release ingested later",
+            "source_url": "https://example.test/older",
+            "published_at": datetime(2026, 7, 30, tzinfo=UTC),
+            "significance": 99,
+        }
+    )
+    service.store.put_news_event(event_fingerprint(newer), newer.model_dump(mode="json"))
+    service.store.put_news_event(event_fingerprint(older), older.model_dump(mode="json"))
+
+    assert [item["headline"] for item in service.latest_news(2)] == [
+        "Newer release",
+        "Older release ingested later",
+    ]

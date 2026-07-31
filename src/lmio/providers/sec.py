@@ -12,6 +12,7 @@ from lmio.providers.base import Provider, ProviderHealth, ProviderState
 SEC_BASE_URL = "https://data.sec.gov"
 SEC_DOCUMENT_HOSTS = {"www.sec.gov", "sec.gov"}
 MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
+MAX_TICKER_MAP_BYTES = 5 * 1024 * 1024
 Transport = Callable[[str, dict[str, str]], bytes]
 
 
@@ -95,6 +96,33 @@ class SECProvider(Provider):
         if len(raw) > MAX_DOCUMENT_BYTES:
             raise ValueError("SEC document exceeds the configured size limit")
         return raw.decode("utf-8", errors="replace")
+
+    def ticker_ciks(self, symbols: set[str]) -> dict[str, str]:
+        """Resolve an approved symbol set against the official SEC ticker directory."""
+
+        if not self.user_agent:
+            raise RuntimeError("SEC_USER_AGENT is required by SEC fair-access policy")
+        wanted = {symbol.strip().upper() for symbol in symbols if symbol.strip()}
+        if not wanted:
+            return {}
+        raw = self.transport(
+            "https://www.sec.gov/files/company_tickers.json",
+            {"User-Agent": self.user_agent, "Host": "www.sec.gov"},
+        )
+        if len(raw) > MAX_TICKER_MAP_BYTES:
+            raise ValueError("SEC ticker directory exceeds the configured size limit")
+        payload = json.loads(raw)
+        if not isinstance(payload, dict):
+            raise ValueError("SEC ticker directory must be an object")
+        resolved: dict[str, str] = {}
+        for item in payload.values():
+            if not isinstance(item, dict):
+                continue
+            ticker = str(item.get("ticker", "")).upper()
+            cik = str(item.get("cik_str", "")).lstrip("0")
+            if ticker in wanted and cik.isdigit():
+                resolved[ticker] = cik
+        return resolved
 
     def ownership_document_url(self, filing: dict[str, Any]) -> str:
         """Resolve the parseable official ownership document for a filing."""

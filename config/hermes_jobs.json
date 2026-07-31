@@ -16,6 +16,13 @@
       "mutates_external_state": false
     },
     {
+      "id": "lmio-official-news",
+      "cadence": "continuous",
+      "command": "python -m lmio.cli refresh-news",
+      "requires": [],
+      "mutates_external_state": false
+    },
+    {
       "id": "lmio-premarket",
       "cadence": "pre-market",
       "command": "python -m lmio.cli import-csv --file ${LMIO_APPROVED_SNAPSHOT}",

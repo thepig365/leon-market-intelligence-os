@@ -22,7 +22,7 @@ recorded.
 
 `config/hermes_jobs.json` describes the broader continuous, premarket,
 after-open, after-close and weekend operating model. The protected Vercel
-runtime implements one weekday Finviz refresh through `vercel.json`. Vercel
+runtime implements weekday Finviz and official-news refreshes through `vercel.json`. Vercel
 sends `Authorization: Bearer <CRON_SECRET>` to the refresh endpoint. Preview
 deployments do not run cron jobs; activation therefore remains a protected
 production deployment action.
@@ -41,6 +41,21 @@ Chinese Telegram brief. It preserves the previous successful run if Finviz is
 unavailable. Use the admin-protected manual refresh endpoint for an additional
 operator-requested update; do not poll more often than the provider licence and
 rate limits permit.
+
+The official-news run is separate and read-only. It collects allowlisted
+Federal Reserve monetary-policy releases and BLS CPI, PPI, employment and JOLTS
+releases. It also checks SEC filings for the configured symbols plus symbols in
+the latest Top 10 when their CIK can be resolved from the official SEC ticker
+directory. A failed feed is marked degraded without deleting prior news. Run it
+locally with:
+
+```bash
+uv run python -m lmio.cli refresh-news
+```
+
+No news item creates an order. Company investor-relations feeds remain pending
+because issuers do not expose one consistent official feed contract; they must
+be onboarded with an explicit allowlisted mapping rather than guessed URLs.
 
 The private Telegram bot also accepts bounded read-only queries from Leon's
 approved chat:

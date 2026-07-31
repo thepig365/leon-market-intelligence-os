@@ -157,3 +157,24 @@ def test_13f_information_table_url_is_resolved_from_official_directory() -> None
     assert provider.ownership_document_url(filing) == (
         "https://www.sec.gov/Archives/edgar/data/1652044/000165204425000096/information_table.xml"
     )
+
+
+def test_sec_ticker_directory_resolves_only_requested_symbols() -> None:
+    directory = {
+        "0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."},
+        "1": {"cik_str": 1326801, "ticker": "META", "title": "Meta Platforms"},
+    }
+    captured: dict[str, object] = {}
+
+    def transport(url: str, headers: dict[str, str]) -> bytes:
+        captured.update({"url": url, "headers": headers})
+        return json.dumps(directory).encode()
+
+    provider = SECProvider("LMIO research admin@example.test", transport)
+
+    assert provider.ticker_ciks({"meta", "missing"}) == {"META": "1326801"}
+    assert captured["url"] == "https://www.sec.gov/files/company_tickers.json"
+    assert captured["headers"] == {
+        "User-Agent": "LMIO research admin@example.test",
+        "Host": "www.sec.gov",
+    }

@@ -34,6 +34,58 @@ const strategyGuide = [
   ["价格图形识别", "识别底部突破、上升三角、双底和上升趋势回踩，必须等待确认。"],
 ] as const;
 
+const newsTypeLabels: Record<string, string> = {
+  macro_monetary_policy: "美联储与利率",
+  macro_employment: "就业报告",
+  macro_inflation_cpi: "消费者通胀",
+  macro_inflation_ppi: "生产端通胀",
+  macro_job_openings: "职位空缺",
+  beneficial_ownership: "大股东持仓",
+  institutional_holdings: "机构持仓",
+  insider_transaction: "内部人士交易",
+};
+
+function newsType(value: unknown) {
+  const code = text(value, "other");
+  if (newsTypeLabels[code]) return newsTypeLabels[code];
+  if (code.startsWith("sec_8-k")) return "公司重大公告";
+  if (code.startsWith("sec_10-k")) return "年度业绩申报";
+  if (code.startsWith("sec_10-q")) return "季度业绩申报";
+  if (code.startsWith("sec_13")) return "机构或大股东持仓";
+  if (code.startsWith("sec_4")) return "内部人士交易";
+  return "其他已核实事件";
+}
+
+function newsPriority(value: unknown) {
+  const score = typeof value === "number" ? value : 0;
+  if (score >= 90) return "最高关注";
+  if (score >= 80) return "重点关注";
+  return "持续观察";
+}
+
+function newsMeaning(value: unknown) {
+  const code = text(value, "other");
+  if (code === "macro_monetary_policy") return "可能影响利率预期、市场估值和整体风险偏好。";
+  if (code === "macro_employment") return "可能改变经济增长和美联储政策预期。";
+  if (code === "macro_inflation_cpi" || code === "macro_inflation_ppi") {
+    return "可能改变通胀与降息预期，并影响成长股估值。";
+  }
+  if (code === "macro_job_openings") return "反映劳动力需求，需结合就业和工资数据判断。";
+  if (code.startsWith("sec_4")) return "需要判断内部人是主动买入、出售还是例行安排。";
+  if (code.startsWith("sec_13")) return "需要比较前后持仓，确认机构或大股东是否明显增减持。";
+  if (code.startsWith("sec_8-k")) return "可能包含业绩、并购、融资、管理层或其他重大公司事项。";
+  if (code.startsWith("sec_10-k") || code.startsWith("sec_10-q")) {
+    return "需要核对收入、盈利、现金流、指引和风险披露的变化。";
+  }
+  return "先阅读原始来源，再判断是否会影响基本面或市场预期。";
+}
+
+function newsNextStep(value: unknown) {
+  const code = text(value, "other");
+  if (code.startsWith("macro_")) return "等待指数、利率、成交量和主要板块的市场反应确认。";
+  return "核对原始申报，并观察价格、成交量、VWAP 与开盘区间是否确认。";
+}
+
 function record(value: unknown): UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as UnknownRecord)
@@ -362,29 +414,52 @@ function NewsPanel({ result }: { result: LMIOResult }) {
   const events = list(result.data).map(record);
   if (!events.length) return <EmptyPanel message="尚无通过来源核验的重大新闻事件。" />;
   return (
-    <section className="recordList">
-      {events.map((event, index) => (
+    <>
+      <section className="panel">
+        <div className="panelHeader">
+          <div>
+            <p className="eyebrow">OFFICIAL SOURCES ONLY</p>
+            <h2>系统正在监控什么</h2>
+          </div>
+          <span className="status status-ready">只读研究</span>
+        </div>
+        <p className="message">
+          美联储政策、CPI、PPI、就业、职位空缺，以及观察名单公司的 SEC 重大申报、
+          机构持仓和内部人士交易。新闻只会进入研究流程，不会触发自动交易。
+        </p>
+      </section>
+      <section className="recordList">
+      {events.map((event, index) => {
+        const eventType = text(event.event_type, "other");
+        return (
         <article className="recordCard" key={`${text(event.headline)}-${index}`}>
           <div className="recordCardTop">
             <div>
-              <p className="eyebrow">{list(event.symbols).map((item) => text(item)).join(" · ") || "MARKET"}</p>
+              <p className="eyebrow">
+                {list(event.symbols).map((item) => text(item)).join(" · ") || "整体市场"}
+                {" · "}{newsType(eventType)}
+              </p>
               <h2>{text(event.headline, "标题待确认")}</h2>
             </div>
-            <span className="scoreBadge">{number(event.significance)}<small>重要性</small></span>
+            <span className="scoreBadge">{newsPriority(event.significance)}<small>{number(event.significance)} 分</small></span>
           </div>
+          <p><strong>为什么重要：</strong>{newsMeaning(eventType)}</p>
+          <p><strong>下一步核实：</strong>{newsNextStep(eventType)}</p>
           <dl className="factGrid">
             <div><dt>来源</dt><dd>{text(event.source)}</dd></div>
-            <div><dt>来源等级</dt><dd>{number(event.source_tier)}</dd></div>
-            <div><dt>意外程度</dt><dd>{number(event.surprise)}</dd></div>
+            <div><dt>来源质量</dt><dd>{number(event.source_tier) === "1" ? "一级官方来源" : `第 ${number(event.source_tier)} 级`}</dd></div>
             <div><dt>置信度</dt><dd>{percent(event.confidence)}</dd></div>
+            <div><dt>系统动作</dt><dd>研究与观察，不执行交易</dd></div>
           </dl>
           <p className="pageFootnote">发布时间：{date(event.published_at)}</p>
           {typeof event.source_url === "string" ? (
             <a className="chartLink" href={event.source_url} rel="noreferrer" target="_blank">查看原始来源 ↗</a>
           ) : null}
         </article>
-      ))}
-    </section>
+        );
+      })}
+      </section>
+    </>
   );
 }
 

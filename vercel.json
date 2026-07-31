@@ -3,6 +3,10 @@
     {
       "path": "/api/v1/providers/finviz/refresh",
       "schedule": "45 12 * * 1-5"
+    },
+    {
+      "path": "/api/v1/providers/news/refresh",
+      "schedule": "15 13 * * 1-5"
     }
   ]
 }

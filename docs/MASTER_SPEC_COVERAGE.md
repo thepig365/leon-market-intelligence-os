@@ -24,9 +24,9 @@ external provider or protected production environment has been activated.
 | Quality growth, revisions, institutional, activist, insider, QARP, PEAD, news, oversold, short squeeze | Implemented | deterministic combination rules and tests |
 | Four dimension scoring | Implemented | `scoring.py` |
 | Earnings revision breadth and EPS revision | Implemented | `screens.py`, tests |
-| Official SEC monitoring | Implemented, external verification pending | `providers/sec.py`, `sec_monitor.py` |
+| Official SEC monitoring | Implemented with configured and latest-Top-10 watchlist coverage; protected refresh verification pending | `providers/sec.py`, `sec_monitor.py`, `service.py` |
 | 13F, Schedule 13D/13G and Form 4 parsing | Implemented with bounded official-document fetch and ingestion dedupe | `sec_ownership.py`, migration 004, parser/monitor tests |
-| News normalisation, dedupe and impact | Implemented | `news.py`, `news_plan.py` |
+| News normalisation, dedupe and impact | Implemented, including allowlisted Federal Reserve and BLS official feeds | `providers/official_rss.py`, `official_news_monitor.py`, `news.py`, `news_plan.py` |
 | Directional reaction windows, VWAP, opening range and gap retention | Implemented | `news_plan.py`, API and news-plan tests |
 | Three valuation perspectives and sensitivity | Implemented for supported company types; multi-model output combines applicable DCF and approved market-multiple inputs | `valuation.py`, `routing.py` |
 | Banks, REITs, unprofitable and cyclical routing | Safely blocked from generic DCF | `routing.py`, tests |

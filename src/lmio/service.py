@@ -13,10 +13,14 @@ from lmio.domain import (
     SecuritySnapshot,
     ValuationResult,
 )
+from lmio.official_news_monitor import monitor_official_news
 from lmio.providers.finviz_api import FinvizAPIProvider
+from lmio.providers.official_rss import OfficialRSSProvider
+from lmio.providers.sec import SECProvider
 from lmio.reports import build_daily_report, classify_regime, unverified_regime
 from lmio.research import build_research_pack
 from lmio.screens import run_core_screens
+from lmio.sec_monitor import monitor_sec
 from lmio.store import RuntimeStore
 from lmio.supabase_store import SupabaseRuntimeStore
 from lmio.telegram import MessageKind, queue_or_send
@@ -129,6 +133,93 @@ class LMIOService:
             (snapshot for snapshot in snapshots if snapshot.symbol == symbol.upper()),
             None,
         )
+
+    def refresh_official_news(
+        self,
+        *,
+        macro_provider: OfficialRSSProvider | None = None,
+        sec_provider: SECProvider | None = None,
+    ) -> dict[str, object]:
+        """Refresh free official macro releases and SEC events without trading."""
+
+        macro_provider = macro_provider or OfficialRSSProvider()
+        sec_provider = sec_provider or SECProvider(self.settings.sec_user_agent)
+        result: dict[str, object] = {}
+
+        try:
+            macro = monitor_official_news(macro_provider, self.store)
+        except RuntimeError as error:
+            macro = {"status": "unavailable", "detail": type(error).__name__}
+            macro_state = "unavailable"
+        else:
+            macro_state = "degraded" if macro["failed_feeds"] else "ready"
+        self.store.append_json(
+            "provider_health",
+            {
+                "provider": macro_provider.name,
+                "state": macro_state,
+                "payload": {
+                    "detail": "official macro release refresh",
+                    "failed_feeds": macro.get("failed_feeds", 0),
+                },
+            },
+        )
+        result["macro"] = macro
+
+        if not self.settings.sec_user_agent.strip():
+            result["sec"] = {"status": "disabled", "detail": "SEC_USER_AGENT is not configured"}
+            return result
+
+        configured = self.settings.parsed_sec_watchlist()
+        report = self.store.latest_json("reports") or {}
+        candidate_symbols = {
+            str(item.get("symbol", "")).strip().upper()
+            for item in list(report.get("top_10") or [])[:10]
+            if isinstance(item, dict) and str(item.get("symbol", "")).strip()
+        }
+        unresolved = candidate_symbols - configured.keys()
+        resolution_failed = False
+        if unresolved:
+            try:
+                configured.update(sec_provider.ticker_ciks(unresolved))
+            except Exception:
+                resolution_failed = True
+        try:
+            sec = monitor_sec(sec_provider, self.store, configured)
+        except Exception as error:
+            sec = {"status": "unavailable", "detail": type(error).__name__}
+            sec_state = "unavailable"
+        else:
+            sec_state = "degraded" if resolution_failed else "ready"
+            sec["unresolved_symbols"] = len(candidate_symbols - configured.keys())
+        self.store.append_json(
+            "provider_health",
+            {
+                "provider": sec_provider.name,
+                "state": sec_state,
+                "payload": {
+                    "detail": "official SEC watchlist refresh",
+                    "watchlist_symbols": len(configured),
+                    "resolution_failed": resolution_failed,
+                },
+            },
+        )
+        result["sec"] = sec
+        return result
+
+    def latest_news(self, limit: int = 100) -> list[dict[str, object]]:
+        """Return news by actual publication time, not ingestion order."""
+
+        bounded_limit = max(1, min(limit, 500))
+        events = self.store.news_payloads(limit=min(bounded_limit * 4, 2000))
+        return sorted(
+            events,
+            key=lambda event: (
+                str(event.get("published_at", "")),
+                int(event.get("significance", 0)),
+            ),
+            reverse=True,
+        )[:bounded_limit]
 
     def run_daily(
         self,

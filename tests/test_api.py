@@ -212,6 +212,37 @@ def test_scheduled_finviz_refresh_requires_cron_secret(
     assert allowed.json()["telegram"] == "sent"
 
 
+def test_scheduled_news_refresh_requires_cron_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        environment="production",
+        cron_secret="scheduled-test-key",
+    )
+
+    class RefreshService:
+        def refresh_official_news(self) -> dict[str, object]:
+            return {
+                "macro": {"feeds": 5, "failed_feeds": 0, "checked": 10, "inserted": 2},
+                "sec": {"symbols": 12, "checked": 20, "inserted": 1},
+            }
+
+    monkeypatch.setattr("lmio.security.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.main.get_service", RefreshService)
+
+    denied = request("GET", "/api/v1/providers/news/refresh")
+    allowed = request(
+        "GET",
+        "/api/v1/providers/news/refresh",
+        headers={"authorization": "Bearer scheduled-test-key"},
+    )
+
+    assert denied.status_code == 401
+    assert allowed.status_code == 200
+    assert allowed.json()["macro"]["failed_feeds"] == 0
+
+
 def test_telegram_webhook_only_answers_leons_chat(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -347,6 +378,7 @@ def test_master_spec_api_surface_is_present() -> None:
         "/api/trade-plans/{plan_id}/transition",
         "/api/reports",
         "/api/strategy-performance",
+        "/api/v1/providers/news/refresh",
     }
 
     assert required <= set(app.openapi()["paths"])

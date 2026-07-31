@@ -58,9 +58,11 @@ async def require_runtime_read_key(request: Request, call_next: Any) -> Response
     """Keep runtime evidence private while leaving a minimal health probe."""
 
     read_allowed = valid_read_credential(request.headers.get("x-lmio-read-key"))
-    cron_allowed = request.url.path == "/api/v1/providers/finviz/refresh" and valid_cron_credential(
-        request.headers.get("authorization"),
-        request.headers.get("x-lmio-cron-key"),
+    cron_allowed = request.url.path in {
+        "/api/v1/providers/finviz/refresh",
+        "/api/v1/providers/news/refresh",
+    } and valid_cron_credential(
+        request.headers.get("authorization"), request.headers.get("x-lmio-cron-key")
     )
     webhook_path = request.url.path == "/api/v1/telegram/webhook"
     if (
@@ -240,7 +242,7 @@ def command_centre_data() -> dict[str, Any]:
     qualified_priorities = list(report.get("top_3") or [])
     urgent_events = [
         event
-        for event in service.store.news_payloads(limit=50)
+        for event in service.latest_news(limit=50)
         if event.get("significance", 0) >= 80 and event.get("confidence", 0) >= 0.7
     ][:5]
     risk_blocks = [
@@ -320,6 +322,32 @@ def manual_finviz_refresh() -> dict[str, object]:
     """Allow an authorised operator to refresh without waiting for the schedule."""
 
     return _refresh_finviz()
+
+
+def _refresh_official_news() -> dict[str, object]:
+    result = get_service().refresh_official_news()
+    audit_event("official_news_refresh_completed", result=result)
+    return result
+
+
+@app.get(
+    "/api/v1/providers/news/refresh",
+    tags=["research"],
+    dependencies=[Depends(require_cron)],
+)
+def scheduled_official_news_refresh() -> dict[str, object]:
+    """Refresh allowlisted government releases and SEC events server-side."""
+
+    return _refresh_official_news()
+
+
+@app.post(
+    "/api/v1/providers/news/refresh",
+    tags=["research"],
+    dependencies=[Depends(require_admin)],
+)
+def manual_official_news_refresh() -> dict[str, object]:
+    return _refresh_official_news()
 
 
 @app.post("/api/v1/demo/run", tags=["research"], dependencies=[Depends(require_admin)])
@@ -420,7 +448,7 @@ def research_history(limit: int = 50) -> list[dict[str, Any]]:
 
 @app.get("/api/v1/news", tags=["research"])
 def news_history(limit: int = 100) -> list[dict[str, Any]]:
-    return get_service().store.news_payloads(limit)
+    return get_service().latest_news(limit)
 
 
 @app.get("/api/v1/ownership", tags=["research"])
@@ -791,7 +819,7 @@ def command_centre() -> str:
         )
         urgent_events = [
             event
-            for event in service.store.news_payloads(limit=50)
+            for event in service.latest_news(limit=50)
             if event.get("significance", 0) >= 80 and event.get("confidence", 0) >= 0.7
         ][:5]
         top_rows = "".join(
