@@ -4,7 +4,7 @@ from pathlib import Path
 from lmio.config import Settings
 from lmio.domain import NewsEvent, SecuritySnapshot
 from lmio.news import event_fingerprint
-from lmio.service import LMIOService
+from lmio.service import MAX_OPERATIONAL_CANDIDATES, LMIOService
 
 
 def test_daily_run_is_append_only_and_reproducible(tmp_path: Path) -> None:
@@ -75,7 +75,10 @@ def test_authorised_refresh_persists_only_screen_candidates(tmp_path: Path) -> N
     )
 
     candidate_symbols = {
-        item["symbol"] for item in service.store.latest_json("screen_runs") or []
+        item["symbol"]
+        for item in (service.store.latest_json("screen_runs") or [])[
+            :MAX_OPERATIONAL_CANDIDATES
+        ]
     }
     stored_symbols = {
         item["symbol"]

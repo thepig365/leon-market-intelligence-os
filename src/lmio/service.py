@@ -23,6 +23,8 @@ from lmio.telegram import MessageKind, queue_or_send
 from lmio.universe import UniversePolicy, build_investable_universe
 from lmio.valuation import run_valuation
 
+MAX_OPERATIONAL_CANDIDATES = 50
+
 
 class LMIOService:
     def __init__(self, settings: Settings) -> None:
@@ -116,7 +118,8 @@ class LMIOService:
             },
         )
         candidates = run_core_screens(investable)
-        candidate_symbols = {candidate.symbol for candidate in candidates}
+        operational_candidates = candidates[:MAX_OPERATIONAL_CANDIDATES]
+        candidate_symbols = {candidate.symbol for candidate in operational_candidates}
         snapshots_to_persist = (
             snapshots
             if data_mode == "synthetic_replay"
@@ -143,7 +146,7 @@ class LMIOService:
                 observed_at=str(snapshot_payload["observed_at"]),
                 payload=snapshot_payload,
             )
-        for candidate in candidates:
+        for candidate in operational_candidates:
             evidence_urls = [
                 item.source_url for item in candidate.evidence if item.source_url is not None
             ]
