@@ -30,6 +30,11 @@ const humanReadablePanels = await readFile(
   new URL("../src/components/human-readable-panels.tsx", import.meta.url),
   "utf8",
 );
+const proxy = await readFile(new URL("../src/proxy.ts", import.meta.url), "utf8");
+const publicAudit = await readFile(
+  new URL("../src/app/public-audit/page.tsx", import.meta.url),
+  "utf8",
+);
 
 const expected = [
   "command-centre",
@@ -55,6 +60,21 @@ for (const slug of expected) {
 
 if (!layout.includes("robots: { index: false, follow: false }")) {
   throw new Error("Dashboard must remain excluded from public indexing.");
+}
+if (!proxy.includes('"/public-audit"')) {
+  throw new Error("Public audit page must be accessible without authentication.");
+}
+if (
+  !publicAudit.includes("dashboardSections") ||
+  !publicAudit.includes("CAN_TRADE = FALSE") ||
+  !publicAudit.includes("NO TRADING · NO PRIVATE DATA")
+) {
+  throw new Error("Public audit page must document all modules and safety boundaries.");
+}
+for (const forbidden of ["LMIO_READ_KEY", "SUPABASE_SERVICE_ROLE_KEY", "FINVIZ_API_TOKEN"]) {
+  if (publicAudit.includes(forbidden)) {
+    throw new Error(`Public audit page must not reference a secret: ${forbidden}`);
+  }
 }
 if (!appShell.includes("不执行交易")) {
   throw new Error("Dashboard must display the no-trading boundary.");

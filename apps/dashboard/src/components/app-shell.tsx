@@ -7,7 +7,7 @@ import { Navigation } from "@/components/navigation";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  if (pathname === "/sign-in") return children;
+  if (pathname === "/sign-in" || pathname === "/public-audit") return children;
 
   return (
     <>

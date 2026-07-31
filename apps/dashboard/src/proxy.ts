@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { identityFromClaims } from "@/lib/auth/identity";
 import { getSupabaseEnvironment, hasSupabaseEnvironment } from "@/lib/supabase/env";
 
-const publicRoutes = new Set(["/sign-in", "/auth/callback"]);
+const publicRoutes = new Set(["/sign-in", "/auth/callback", "/public-audit"]);
 
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
