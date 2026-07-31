@@ -84,6 +84,77 @@ def test_ready_reports_latest_verified_provider(
     assert providers.json()["finviz_elite_csv"]["state"] == "ready"
 
 
+def test_command_centre_combines_operating_status_without_secrets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "runtime.sqlite3",
+        telegram_bot_token="123456789:abcdefghijklmnopqrstuvwxyzABCDE",
+        telegram_chat_id="8873919191",
+        telegram_webhook_secret="webhook-secret",
+        finviz_api_token="finviz-secret",
+    )
+    service = LMIOService(settings)
+    service.store.append_json(
+        "provider_health",
+        {
+            "provider": "finviz_elite_api",
+            "state": "ready",
+            "payload": {"detail": "Authorised API refresh completed."},
+        },
+    )
+    service.store.append_json(
+        "reports",
+        {
+            "report_type": "daily",
+            "payload": {
+                "generated_at": "2026-07-31T01:00:00Z",
+                "data_mode": "authorised_finviz_api",
+                "regime": {
+                    "label": "Unverified",
+                    "confidence": 0,
+                    "blocked_sectors": [],
+                    "blocked_symbols": [],
+                },
+                "funnel": {
+                    "universe_checked": 5198,
+                    "investable": 2854,
+                    "abnormal_candidates": 752,
+                },
+                "top_10": [
+                    {
+                        "symbol": "SNDK",
+                        "company": "Sandisk Corp",
+                        "strategy": "pattern_recognition",
+                        "total_score": 70,
+                    }
+                ],
+                "top_3": [],
+                "warnings": [],
+            },
+        },
+    )
+    monkeypatch.setattr("lmio.main.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.main.get_service", lambda: service)
+
+    response = request("GET", "/api/v1/command-centre")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["research_queue"][0]["symbol"] == "SNDK"
+    assert payload["provider_health"]["finviz_elite_api"]["state"] == "ready"
+    assert payload["telegram"]["private_queries_configured"] is True
+    assert payload["safety"] == {
+        "can_trade": False,
+        "live_trading_enabled": False,
+        "paper_trading_enabled": False,
+    }
+    assert "finviz-secret" not in response.text
+    assert "webhook-secret" not in response.text
+
+
 def test_all_dashboard_pages_exist() -> None:
     for page in DASHBOARD_PAGES:
         response = request("GET", f"/dashboard/{page}")

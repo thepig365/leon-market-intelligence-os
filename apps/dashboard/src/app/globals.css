@@ -821,6 +821,149 @@ h1 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.commandMetrics {
+  display: grid;
+  gap: 1px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.commandMetrics div,
+.commandStatusCard {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 22px;
+}
+
+.commandMetrics span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.commandMetrics strong {
+  display: block;
+  font-size: clamp(1.7rem, 4vw, 2.7rem);
+  line-height: 1.1;
+  margin-top: 8px;
+}
+
+.commandStatusGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 24px;
+}
+
+.commandStatusCard h2,
+.commandStatusCard p {
+  margin-bottom: 0;
+}
+
+.commandStatusCard > p {
+  color: var(--muted);
+}
+
+.commandStatusTop {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.commandStatusTop .eyebrow {
+  margin-bottom: 0;
+}
+
+.commandStatusCard code {
+  background: var(--paper);
+  color: var(--accent);
+  padding: 2px 5px;
+}
+
+.commandTwoColumn {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 28px;
+}
+
+.commandList {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+  margin: 22px 0 0;
+  padding: 0;
+}
+
+.commandList li {
+  border-left: 3px solid var(--accent-soft);
+  color: var(--muted);
+  display: grid;
+  gap: 3px;
+  padding-left: 12px;
+}
+
+.commandList strong {
+  color: var(--ink);
+}
+
+.warningList li {
+  border-left-color: #d7bd8b;
+}
+
+.quickActions {
+  align-items: flex-start;
+  background: var(--accent);
+  color: white;
+  display: grid;
+  gap: 28px;
+  grid-template-columns: minmax(220px, 0.8fr) 1.2fr;
+  margin-top: 28px;
+  padding: clamp(24px, 4vw, 40px);
+}
+
+.quickActions .eyebrow,
+.quickActions p {
+  color: #dceae1;
+}
+
+.quickActions h2,
+.quickActions p {
+  margin-bottom: 0;
+}
+
+.quickActions nav {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.quickActions a {
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  font-weight: 700;
+  padding: 13px 15px;
+  text-decoration: none;
+}
+
+.quickActions a:hover {
+  background: white;
+  color: var(--accent);
+}
+
+.auditFooter {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  gap: 12px 28px;
+  margin-top: 20px;
+}
+
+.auditFooter p {
+  margin: 0;
+}
+
 footer {
   border-top: 1px solid var(--line);
   color: var(--muted);
@@ -848,6 +991,14 @@ footer {
   }
 
   .healthGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .commandMetrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .commandStatusGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -927,6 +1078,14 @@ footer {
 
   .healthGrid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .commandMetrics,
+  .commandStatusGrid,
+  .commandTwoColumn,
+  .quickActions,
+  .quickActions nav {
+    grid-template-columns: 1fr;
   }
 
   .scoreBadge,

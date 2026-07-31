@@ -225,6 +225,63 @@ def providers_health() -> dict[str, Any]:
 app.get("/api/providers/health", tags=["system"])(providers_health)
 
 
+@app.get("/api/v1/command-centre", tags=["research"])
+def command_centre_data() -> dict[str, Any]:
+    """Return one truthful, non-sensitive operating view for the LMIO dashboard."""
+
+    service = get_service()
+    settings = get_settings()
+    report = service.store.latest_json("reports")
+    if report is None:
+        raise HTTPException(status_code=404, detail="No report exists.")
+
+    regime = dict(report.get("regime") or {})
+    research_queue = list(report.get("top_10") or [])[:3]
+    qualified_priorities = list(report.get("top_3") or [])
+    urgent_events = [
+        event
+        for event in service.store.news_payloads(limit=50)
+        if event.get("significance", 0) >= 80 and event.get("confidence", 0) >= 0.7
+    ][:5]
+    risk_blocks = [
+        *list(regime.get("blocked_sectors") or []),
+        *list(regime.get("blocked_symbols") or []),
+    ]
+    warnings = list(report.get("warnings") or [])
+    if regime.get("label") == "Unverified":
+        warnings.append("市场环境尚未由独立基准数据核实；不得把候选排序视为交易指令。")
+    if not qualified_priorities and research_queue:
+        warnings.append("当前 Top 3 仅为研究队列；估值和确认条件不足，尚无优先机会。")
+
+    latest_provider = service.store.latest_provider_health()
+    counts = service.store.counts()
+    integrations = settings.integration_readiness()
+    return {
+        "generated_at": report.get("generated_at"),
+        "data_mode": report.get("data_mode"),
+        "regime": regime,
+        "funnel": report.get("funnel") or {},
+        "research_queue": research_queue,
+        "qualified_priorities": qualified_priorities,
+        "important_events": urgent_events,
+        "risk_blocks": risk_blocks,
+        "warnings": list(dict.fromkeys(warnings)),
+        "provider_health": providers_health(),
+        "latest_provider": latest_provider,
+        "telegram": {
+            "configured": bool(integrations.get("telegram_configured")),
+            "private_queries_configured": bool(integrations.get("telegram_queries_configured")),
+            "delivery_records": counts.get("telegram_deliveries", 0),
+        },
+        "storage": {"status": "ready", "counts": counts},
+        "safety": {
+            "can_trade": settings.can_trade,
+            "live_trading_enabled": settings.live_trading_enabled,
+            "paper_trading_enabled": settings.paper_trading_enabled,
+        },
+    }
+
+
 def _refresh_finviz(message_kind: MessageKind = MessageKind.PREMARKET) -> dict[str, object]:
     try:
         result = get_service().refresh_finviz(message_kind=message_kind)

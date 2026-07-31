@@ -13,7 +13,7 @@ export const dashboardSections: DashboardSection[] = [
     label: "指挥中心",
     eyebrow: "COMMAND CENTRE",
     description: "市场状态、数据新鲜度、Top 3、重要事件和风险封锁。",
-    endpoint: "/api/v1/reports/latest",
+    endpoint: "/api/v1/command-centre",
   },
   {
     slug: "top-10",

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { LMIOResult } from "@/lib/lmio";
 import type { DashboardSection } from "@/lib/navigation";
 import { TopTenPanel } from "@/components/top-ten-panel";
@@ -119,41 +120,100 @@ function CommandCentrePanel({ result }: { result: LMIOResult }) {
   if (result.state !== "ready") {
     return <StatePanel result={result} title="指挥中心尚未取得运行资料" />;
   }
-  const report = record(result.data);
-  const regime = record(report.regime);
-  const funnel = record(report.funnel);
-  const top = list(report.top_3).map(record);
-  const warnings = list(report.warnings).map((item) => text(item));
+  const command = record(result.data);
+  const regime = record(command.regime);
+  const funnel = record(command.funnel);
+  const top = list(command.research_queue).map(record);
+  const qualified = list(command.qualified_priorities).map(record);
+  const events = list(command.important_events).map(record);
+  const riskBlocks = list(command.risk_blocks).map((item) => text(item));
+  const warnings = list(command.warnings).map((item) => text(item));
+  const providers = record(command.provider_health);
+  const latestProvider = record(command.latest_provider);
+  const telegram = record(command.telegram);
+  const safety = record(command.safety);
+  const finviz = record(
+    providers.finviz_elite_api ??
+      providers.finviz_elite_csv ??
+      providers.finviz,
+  );
   const regimeVerified = text(regime.label, "Unverified") !== "Unverified";
+  const finvizReady = text(finviz.state, "disabled") === "ready";
+  const telegramReady =
+    telegram.configured === true && telegram.private_queries_configured === true;
+  const tradingLocked =
+    safety.can_trade === false &&
+    safety.live_trading_enabled === false &&
+    safety.paper_trading_enabled === false;
 
   return (
     <section className="researchView">
-      <div className="summaryStrip">
+      <div className="commandMetrics">
         <div><span>已检查股票</span><strong>{number(funnel.universe_checked)}</strong></div>
         <div><span>符合基础范围</span><strong>{number(funnel.investable)}</strong></div>
         <div><span>策略候选</span><strong>{number(funnel.abnormal_candidates)}</strong></div>
-        <div><span>优先研究</span><strong>{number(top.length)}</strong></div>
+        <div><span>今日研究队列</span><strong>{number(top.length)}</strong></div>
+        <div><span>完成全部核验</span><strong>{number(qualified.length)}</strong></div>
       </div>
 
-      <div className="researchNotice">
-        <div>
-          <p className="eyebrow">MARKET REGIME</p>
-          <h2>{regimeVerified ? text(regime.label) : "市场环境尚未独立核实"}</h2>
+      <div className="commandStatusGrid">
+        <article className="commandStatusCard">
+          <div className="commandStatusTop">
+            <p className="eyebrow">市场环境</p>
+            <span className={`status ${regimeVerified ? "status-ready" : "status-empty"}`}>
+              {regimeVerified ? "已核实" : "待核实"}
+            </span>
+          </div>
+          <h2>{regimeVerified ? text(regime.label) : "尚未独立核实"}</h2>
+          <p>置信度 {percent(regime.confidence)}。未核实时不作方向判断。</p>
+        </article>
+
+        <article className="commandStatusCard">
+          <div className="commandStatusTop">
+            <p className="eyebrow">FINVIZ 数据</p>
+            <span className={`status ${finvizReady ? "status-ready" : "status-empty"}`}>
+              {finvizReady ? "连接正常" : "需要检查"}
+            </span>
+          </div>
+          <h2>{finvizReady ? "市场扫描已连接" : "当前状态未确认"}</h2>
           <p>
-            置信度 {percent(regime.confidence)}。系统只做研究与决策支持，不会执行交易。
+            最近核验：{date(latestProvider.created_at)}。来源：
+            {text(latestProvider.provider, "尚无核验记录")}。
           </p>
-        </div>
-        <span className={`status ${regimeVerified ? "status-ready" : "status-empty"}`}>
-          {regimeVerified ? "已核实" : "需人工复核"}
-        </span>
+        </article>
+
+        <article className="commandStatusCard">
+          <div className="commandStatusTop">
+            <p className="eyebrow">TELEGRAM</p>
+            <span className={`status ${telegramReady ? "status-ready" : "status-empty"}`}>
+              {telegramReady ? "可查询" : "需要检查"}
+            </span>
+          </div>
+          <h2>{telegramReady ? "私人查询已连接" : "私人查询尚未就绪"}</h2>
+          <p>
+            已保存 {number(telegram.delivery_records)} 条发送记录。可发送股票代码、
+            <code>/status</code> 或 <code>/help</code>。
+          </p>
+        </article>
+
+        <article className="commandStatusCard">
+          <div className="commandStatusTop">
+            <p className="eyebrow">安全边界</p>
+            <span className={`status ${tradingLocked ? "status-ready" : "status-unavailable"}`}>
+              {tradingLocked ? "已锁定" : "立即停止"}
+            </span>
+          </div>
+          <h2>{tradingLocked ? "所有交易功能关闭" : "安全配置异常"}</h2>
+          <p>LMIO 仅提供研究与决策支持，不会建立或执行订单。</p>
+        </article>
       </div>
 
       <div className="sectionHeading">
         <div>
           <p className="eyebrow">TODAY’S PRIORITIES</p>
-          <h2>今天优先研究</h2>
+          <h2>今日 Top 3 研究队列</h2>
         </div>
-        <p>排名代表研究优先级，不是买入指令。</p>
+        <p>按现有证据排序；进入队列不代表已完成估值或可以买入。</p>
       </div>
       {top.length ? (
         <div className="compactCardGrid">
@@ -173,6 +233,7 @@ function CommandCentrePanel({ result }: { result: LMIOResult }) {
                 <strong>下一项确认</strong>
                 <span>{text(candidate.next_confirmation, "核对官方披露、估值与价格确认。")}</span>
               </div>
+              <Link className="chartLink" href="/top-10">查看完整候选资料 →</Link>
             </article>
           ))}
         </div>
@@ -180,13 +241,64 @@ function CommandCentrePanel({ result }: { result: LMIOResult }) {
         <EmptyPanel message="系统不会为了填满榜单而降低筛选标准。" />
       )}
 
-      {warnings.length ? (
-        <section className="noticeList">
-          <h2>需要注意</h2>
-          <ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+      <div className="commandTwoColumn">
+        <section className="plainCard">
+          <p className="eyebrow">IMPORTANT EVENTS</p>
+          <h2>重要事件</h2>
+          {events.length ? (
+            <ul className="commandList">
+              {events.map((event, index) => (
+                <li key={`${text(event.headline)}-${index}`}>
+                  <strong>{text(event.headline, "事件标题待确认")}</strong>
+                  <span>
+                    重要度 {number(event.significance)} · 置信度 {percent(event.confidence)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="message">目前没有通过来源与置信度门槛的重要事件。</p>
+          )}
+          <Link className="chartLink" href="/news-trading">打开新闻研究 →</Link>
         </section>
-      ) : null}
-      <p className="pageFootnote">报告时间：{date(report.generated_at)}</p>
+
+        <section className="plainCard">
+          <p className="eyebrow">RISK BLOCKS</p>
+          <h2>风险封锁与警告</h2>
+          {riskBlocks.length || warnings.length ? (
+            <ul className="commandList warningList">
+              {riskBlocks.map((item) => (
+                <li key={`block-${item}`}><strong>已封锁：{item}</strong></li>
+              ))}
+              {warnings.map((warning) => <li key={warning}>{warning}</li>)}
+            </ul>
+          ) : (
+            <p className="message">目前没有主动封锁；交易功能仍永久关闭。</p>
+          )}
+          <Link className="chartLink" href="/system-health">查看系统健康 →</Link>
+        </section>
+      </div>
+
+      <section className="quickActions" aria-label="指挥中心快捷入口">
+        <div>
+          <p className="eyebrow">QUICK ACTIONS</p>
+          <h2>下一步要做什么</h2>
+          <p>从同一处进入候选、筛选、证据、报告和系统状态。</p>
+        </div>
+        <nav>
+          <Link href="/top-10">查看 Top 10</Link>
+          <Link href="/strategy-screener">运行结果与策略</Link>
+          <Link href="/watchlists">观察名单</Link>
+          <Link href="/reports-journal">中文报告</Link>
+          <Link href="/system-health">连接与安全状态</Link>
+        </nav>
+      </section>
+
+      <div className="auditFooter">
+        <p><strong>数据模式：</strong>{text(command.data_mode, "待核实")}</p>
+        <p><strong>报告时间：</strong>{date(command.generated_at)}</p>
+        <p><strong>最近检查：</strong>{date(result.checkedAt)}</p>
+      </div>
     </section>
   );
 }
