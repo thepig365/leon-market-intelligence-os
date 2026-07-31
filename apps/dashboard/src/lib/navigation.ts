@@ -26,7 +26,7 @@ export const dashboardSections: DashboardSection[] = [
     slug: "strategy-screener",
     label: "策略筛选",
     eyebrow: "STRATEGY SCREENER",
-    description: "独立运行质量增长、盈利修正和其他 V1 策略筛选。",
+    description: "以盈利修正、质量、估值、动量和图形确认运行 11 套独立策略。",
     endpoint: "/api/v1/screens/latest",
   },
   {

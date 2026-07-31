@@ -47,11 +47,17 @@ type Report = {
 };
 
 const strategyLabels: Record<string, string> = {
-  quality_at_reasonable_price: "质量与合理估值",
-  short_squeeze: "空头回补观察",
-  institutional_accumulation: "机构增持观察",
-  earnings_revision: "盈利预期改善",
   quality_growth_momentum: "质量成长动量",
+  earnings_revision_momentum: "盈利预期改善",
+  earnings_revision: "盈利预期改善",
+  institutional_accumulation: "机构持续增持",
+  activist_catalyst: "积极股东催化",
+  insider_value: "内部人价值确认",
+  quality_at_reasonable_price: "质量与合理估值",
+  post_earnings_announcement_drift: "业绩后趋势延续",
+  news_driven: "重大新闻变化",
+  oversold_reversal: "超卖修复观察",
+  short_squeeze: "空头回补观察",
   pattern_recognition: "图形识别",
 };
 

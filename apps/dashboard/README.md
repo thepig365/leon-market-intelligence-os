@@ -4,6 +4,11 @@ Chinese-first, read-only Next.js dashboard for Leon Market Intelligence OS.
 It implements the 13 dashboard areas required by the governing specification
 and reads versioned evidence from the LMIO FastAPI runtime.
 
+Every area has a purpose-built, Chinese-first presentation. The operator sees
+plain-language conclusions, scores, risks, confirmations and next actions.
+Raw JSON and technical runtime records remain available to the audit layer but
+are intentionally excluded from the normal working interface.
+
 The dashboard cannot execute an order. It does not receive the LMIO
 administrator key, Supabase service-role key or any provider credential. It
 reuses the approved Bayview Supabase identity and requires active private-beta

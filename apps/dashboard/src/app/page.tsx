@@ -1,13 +1,11 @@
 import Link from "next/link";
-import { StatusPanel } from "@/components/status-panel";
+import { HumanReadablePanel } from "@/components/human-readable-panels";
 import { readLMIO } from "@/lib/lmio";
-import { dashboardSections } from "@/lib/navigation";
+import { dashboardSections, sectionBySlug } from "@/lib/navigation";
 
 export default async function Home() {
-  const [report, health] = await Promise.all([
-    readLMIO("/api/v1/reports/latest"),
-    readLMIO("/ready"),
-  ]);
+  const report = await readLMIO("/api/v1/reports/latest");
+  const commandCentre = sectionBySlug("command-centre");
 
   return (
     <>
@@ -31,15 +29,14 @@ export default async function Home() {
             <p className="eyebrow">{section.eyebrow}</p>
             <h2>{section.label}</h2>
             <p>{section.description}</p>
-            <span>{section.deferred ? "查看安全边界" : "查看运行证据"} →</span>
+            <span>{section.deferred ? "查看安全边界" : "打开模块"} →</span>
           </Link>
         ))}
       </section>
 
-      <div className="twoColumn">
-        <StatusPanel result={report} />
-        <StatusPanel result={health} />
-      </div>
+      {commandCentre ? (
+        <HumanReadablePanel section={commandCentre} result={report} />
+      ) : null}
     </>
   );
 }

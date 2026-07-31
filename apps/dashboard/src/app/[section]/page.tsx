@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
-import { StatusPanel } from "@/components/status-panel";
-import { TopTenPanel } from "@/components/top-ten-panel";
+import { HumanReadablePanel } from "@/components/human-readable-panels";
 import { dashboardSections, sectionBySlug } from "@/lib/navigation";
 import { readLMIO } from "@/lib/lmio";
 
@@ -32,11 +31,7 @@ export default async function DashboardPage({
           </p>
         ) : null}
       </section>
-      {slug === "top-10" ? (
-        <TopTenPanel result={result} />
-      ) : (
-        <StatusPanel result={result} />
-      )}
+      <HumanReadablePanel section={section} result={result} />
     </>
   );
 }

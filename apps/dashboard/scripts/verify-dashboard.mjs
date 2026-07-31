@@ -22,6 +22,14 @@ const authCallback = await readFile(
   new URL("../src/app/auth/callback/route.ts", import.meta.url),
   "utf8",
 );
+const sectionPage = await readFile(
+  new URL("../src/app/[section]/page.tsx", import.meta.url),
+  "utf8",
+);
+const humanReadablePanels = await readFile(
+  new URL("../src/components/human-readable-panels.tsx", import.meta.url),
+  "utf8",
+);
 
 const expected = [
   "command-centre",
@@ -68,7 +76,24 @@ if (
 ) {
   throw new Error("Google callback must exchange the session and enforce Bayview identity claims.");
 }
+if (!sectionPage.includes("HumanReadablePanel")) {
+  throw new Error("All dashboard sections must use the human-readable presentation layer.");
+}
+if (
+  humanReadablePanels.includes("JSON.stringify") ||
+  humanReadablePanels.includes("<pre")
+) {
+  throw new Error("The daily LMIO interface must not expose raw technical data dumps.");
+}
+for (const slug of expected) {
+  if (
+    !["unusual-options", "paper-trades"].includes(slug) &&
+    !humanReadablePanels.includes(`case "${slug}"`)
+  ) {
+    throw new Error(`Missing human-readable presenter for: ${slug}`);
+  }
+}
 
 console.log(
-  `Verified ${expected.length} dashboard sections and the protected identity/runtime/OAuth boundary.`,
+  `Verified ${expected.length} human-readable dashboard sections and the protected identity/runtime/OAuth boundary.`,
 );

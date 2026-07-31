@@ -641,9 +641,12 @@ def command_centre() -> str:
         <div class="grid">
           <section><h2>市场状态</h2><strong>{escape(report["regime"]["label"])}</strong>
           <p>置信度 {report["regime"]["confidence"]:.0%}</p></section>
-          <section><h2>每日漏斗</h2><pre>{escape(str(report["funnel"]))}</pre></section>
-          <section><h2>安全边界</h2><strong>CAN_TRADE = false</strong>
-          <p>LIVE / PAPER 均关闭</p></section>
+          <section><h2>每日漏斗</h2>
+          <p>检查 {report["funnel"].get("universe_checked", 0)} 只股票</p>
+          <p>基础范围 {report["funnel"].get("investable", 0)} 只 ·
+          优先机会 {report["funnel"].get("priority_opportunities", 0)} 只</p></section>
+          <section><h2>安全边界</h2><strong>不执行交易</strong>
+          <p>实盘与模拟交易均关闭</p></section>
         </div>
         <div class="grid">
           <section><h2>数据新鲜度</h2><p>{escape(report["generated_at"])}</p>
@@ -658,7 +661,7 @@ def command_centre() -> str:
         <section><h2>Top 10 观察名单</h2>
         <table><thead><tr><th>代码</th><th>公司</th><th>策略</th><th>总分</th>
         <th>数据置信度</th></tr></thead><tbody>{top_rows}</tbody></table></section>
-        <section><h2>中文简报</h2><pre>{escape(report["message_zh"])}</pre>
+        <section><h2>中文简报</h2><p>{escape(report["message_zh"])}</p>
         <ul>{warnings}</ul></section>
         """
     nav = " ".join(
@@ -689,7 +692,6 @@ def dashboard_page(page: str) -> str:
     report = service.store.latest_json("reports")
     if page == "command-centre":
         return command_centre()
-    details: object = []
     if page in {"unusual-options", "paper-trades"}:
         status = (
             "V1 延后模块，未配置数据提供商。"
@@ -699,39 +701,30 @@ def dashboard_page(page: str) -> str:
     elif page == "intrinsic-value":
         valuations = service.store.history_json("valuation_runs")
         status = f"已保存 {len(valuations)} 个版本化估值运行；可通过 API 查看完整假设与敏感度。"
-        details = valuations[:10]
     elif page in {"top-10", "watchlists", "strategy-screener"}:
         count = len(report["top_10"]) if report else 0
         status = f"当前观察名单 {count} 项；每项保留策略、证据、四维评分和缺失字段。"
-        details = report["top_10"] if report else []
     elif page == "news-trading":
         status = f"已保存 {service.store.counts()['news_events']} 个去重官方事件。"
-        details = service.store.news_payloads(limit=20)
     elif page == "system-health":
         status = json_status(service.store.counts())
-        details = health_payload()
     elif page == "institutional-insider":
         count = service.store.counts()["ownership_events"]
         status = f"已保存 {count} 个版本化持仓事件；不以机构或内部人信息单独触发建议。"
-        details = service.store.history_json("ownership_events", 20)
     elif page == "conditional-plans":
         count = service.store.counts()["trade_plan_transitions"]
         status = (
             f"已保存 {count} 个状态转换证据。条件计划只用于研究确认；"
             "PAPER_READY / PAPER_OPEN 由安全配置阻止。"
         )
-        details = service.store.history_json("trade_plan_transitions", 20)
     elif page == "reports-journal":
         status = f"已保存 {service.store.counts()['reports']} 份版本化报告。"
-        details = service.store.history_json("reports", 10)
     else:
         status = "所有敏感配置仅来自环境变量；页面不显示任何密钥。"
-        details = get_settings().public_health()
     nav = " ".join(
         f'<a href="/dashboard/{slug}">{escape(label)}</a>'
         for slug, label in DASHBOARD_PAGES.items()
     )
-    evidence = escape(json.dumps(details, ensure_ascii=False, indent=2, default=str))
     return f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>{escape(DASHBOARD_PAGES[page])} · LMIO</title><style>
@@ -739,10 +732,11 @@ def dashboard_page(page: str) -> str:
     main{{max-width:1100px;margin:auto;padding:40px 24px}}nav{{display:flex;gap:14px;overflow:auto;
     padding:14px 0;border-bottom:1px solid #ccc}}nav a{{color:#171717;white-space:nowrap}}
     section{{background:#fff;border:1px solid #ddd;padding:28px;margin-top:24px}}
-    pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f7f5;padding:18px}}
     </style></head><body><main><nav>{nav}</nav><section>
     <p>LEON MARKET INTELLIGENCE OS</p><h1>{escape(DASHBOARD_PAGES[page])}</h1>
-    <p>{escape(status)}</p><h2>运行证据</h2><pre>{evidence}</pre>
+    <p>{escape(status)}</p><h2>如何使用</h2>
+    <p>这是运行服务的简要诊断入口。日常研究请使用受保护的 LMIO 工作台，
+    其中会以中文显示结论、评分、风险和下一步，而不会展示技术记录。</p>
     <p><a href="/">返回指挥中心</a></p>
     </section></main></body></html>"""
 

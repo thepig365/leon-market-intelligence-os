@@ -115,5 +115,11 @@ server-side HTTP. Provider credentials and the administrator API key never
 enter browser JavaScript. Missing or unavailable runtime data is shown as an
 explicit safe-degradation state rather than invented content.
 
+The 13 governed views use dedicated human-readable presenters. Audit records
+remain append-only in the runtime store, while the operator interface
+translates them into Chinese research summaries, strategy counts, decision
+cards, risks, confirmation conditions and safe empty states. The normal
+dashboard never renders a raw JSON evidence dump.
+
 The minimal HTML routes served by FastAPI remain a diagnostic fallback for
 runtime inspection. They are not the specification-aligned primary dashboard.
