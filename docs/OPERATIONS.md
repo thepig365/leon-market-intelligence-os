@@ -42,6 +42,19 @@ unavailable. Use the admin-protected manual refresh endpoint for an additional
 operator-requested update; do not poll more often than the provider licence and
 rate limits permit.
 
+The private Telegram bot also accepts bounded read-only queries from Leon's
+approved chat:
+
+- send `/status` to see the latest verified Finviz connection state;
+- send a ticker such as `SNDK`, or `/quote SNDK`, to request a current
+  single-symbol Finviz snapshot;
+- send `/help` to see the supported commands.
+
+Telegram signs webhook calls with `TELEGRAM_WEBHOOK_SECRET`. The runtime ignores
+messages from every chat except `TELEGRAM_CHAT_ID`. A ticker query calls the
+official Finviz API for that symbol; it does not invent missing fields, place an
+order or enable paper/live trading.
+
 The synthetic demo is for replay testing only:
 
 ```bash

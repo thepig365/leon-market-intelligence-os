@@ -43,6 +43,9 @@ LMIO_STORE_BACKEND=supabase
 SUPABASE_URL=<approved project URL>
 SUPABASE_SERVICE_ROLE_KEY=<server secret>
 LMIO_READ_API_KEY=<random shared server secret>
+TELEGRAM_BOT_TOKEN=<dedicated private bot token>
+TELEGRAM_CHAT_ID=<approved Leon private chat>
+TELEGRAM_WEBHOOK_SECRET=<random webhook verification secret>
 CAN_TRADE=false
 LIVE_TRADING_ENABLED=false
 PAPER_TRADING_ENABLED=false
@@ -99,6 +102,9 @@ rehearsal and secret scan.
 8. Verify mutating endpoints reject a missing or wrong admin key.
 9. Verify provider failures degrade safely.
 10. Verify no secret appears in responses or logs.
+11. Verify Telegram rejects a wrong webhook secret and an unapproved chat.
+12. From Leon's approved private chat, send `/status` and one ticker symbol;
+    confirm both responses arrive and the ticker response cites Finviz.
 
 ## Rollback
 

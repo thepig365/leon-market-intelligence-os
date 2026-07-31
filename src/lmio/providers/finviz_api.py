@@ -17,9 +17,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 FINVIZ_EXPORT_URL = "https://elite.finviz.com/export/screener"
-FINVIZ_COLUMNS = (
-    "1,2,3,4,5,129,6,8,22,23,39,40,34,38,45,54,127,64,63,67,65,59,29,30,31"
-)
+FINVIZ_COLUMNS = "1,2,3,4,5,129,6,8,22,23,39,40,34,38,45,54,127,64,63,67,65,59,29,30,31"
 FinvizTransport = Callable[[str, dict[str, str], float], httpx.Response]
 
 
@@ -54,9 +52,7 @@ class FinvizAPIProvider(MarketDataProvider):
         self._health = ProviderHealth(
             provider=self.name,
             state=(
-                ProviderState.CONFIGURED_NOT_VERIFIED
-                if self._api_token
-                else ProviderState.DISABLED
+                ProviderState.CONFIGURED_NOT_VERIFIED if self._api_token else ProviderState.DISABLED
             ),
             detail=(
                 "awaiting first authorised Finviz API refresh"
@@ -68,19 +64,25 @@ class FinvizAPIProvider(MarketDataProvider):
     def health(self) -> ProviderHealth:
         return self._health
 
-    def snapshots(self) -> list[SecuritySnapshot]:
+    def snapshots(self, symbols: list[str] | None = None) -> list[SecuritySnapshot]:
         if not self._api_token:
             raise RuntimeError("Finviz API is not configured")
 
+        requested_symbols = sorted(
+            {symbol.strip().upper() for symbol in (symbols or []) if symbol.strip()}
+        )
         response: httpx.Response | None = None
         for attempt in range(3):
+            params = {
+                "v": "152",
+                "c": FINVIZ_COLUMNS,
+                "auth": self._api_token,
+            }
+            if requested_symbols:
+                params["t"] = ",".join(requested_symbols)
             response = self._transport(
                 FINVIZ_EXPORT_URL,
-                {
-                    "v": "152",
-                    "c": FINVIZ_COLUMNS,
-                    "auth": self._api_token,
-                },
+                params,
                 30.0,
             )
             if response.status_code != 429:
@@ -108,6 +110,13 @@ class FinvizAPIProvider(MarketDataProvider):
         self._health = ProviderHealth(
             provider=self.name,
             state=ProviderState.READY,
-            detail=f"authorised Finviz API refresh accepted {len(snapshots)} equities",
+            detail=(
+                f"authorised Finviz API refresh accepted {len(snapshots)} equities"
+                if not requested_symbols
+                else (
+                    "authorised Finviz API lookup accepted "
+                    f"{len(snapshots)} of {len(requested_symbols)} requested symbols"
+                )
+            ),
         )
         return snapshots

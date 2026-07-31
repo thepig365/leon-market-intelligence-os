@@ -18,11 +18,17 @@ from lmio.plans import ConditionalPlan, PlanState, transition_with_evidence
 from lmio.security import (
     require_admin,
     require_cron,
+    require_telegram_webhook,
     valid_cron_credential,
     valid_read_credential,
 )
 from lmio.service import LMIOService
-from lmio.telegram import MessageKind, queue_or_send
+from lmio.telegram import (
+    MessageKind,
+    format_symbol_snapshot,
+    parse_symbol_query,
+    queue_or_send,
+)
 
 app = FastAPI(
     title="Leon Market Intelligence OS",
@@ -52,15 +58,15 @@ async def require_runtime_read_key(request: Request, call_next: Any) -> Response
     """Keep runtime evidence private while leaving a minimal health probe."""
 
     read_allowed = valid_read_credential(request.headers.get("x-lmio-read-key"))
-    cron_allowed = (
-        request.url.path == "/api/v1/providers/finviz/refresh"
-        and valid_cron_credential(
-            request.headers.get("authorization"),
-            request.headers.get("x-lmio-cron-key"),
-        )
+    cron_allowed = request.url.path == "/api/v1/providers/finviz/refresh" and valid_cron_credential(
+        request.headers.get("authorization"),
+        request.headers.get("x-lmio-cron-key"),
     )
-    if request.url.path not in {"/health", "/favicon.ico"} and not (
-        read_allowed or cron_allowed
+    webhook_path = request.url.path == "/api/v1/telegram/webhook"
+    if (
+        request.url.path not in {"/health", "/favicon.ico"}
+        and not webhook_path
+        and not (read_allowed or cron_allowed)
     ):
         return JSONResponse(
             status_code=401,
@@ -87,6 +93,82 @@ def health_payload() -> dict[str, Any]:
 @app.get("/health", tags=["system"])
 def health() -> dict[str, Any]:
     return health_payload()
+
+
+@app.post(
+    "/api/v1/telegram/webhook",
+    tags=["research"],
+    dependencies=[Depends(require_telegram_webhook)],
+)
+async def telegram_webhook(request: Request) -> dict[str, str]:
+    """Answer Leon's private Telegram queries with current Finviz data."""
+
+    settings = get_settings()
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        return {"status": "ignored"}
+    message = payload.get("message")
+    if not isinstance(message, dict):
+        return {"status": "ignored"}
+    chat = message.get("chat")
+    text = message.get("text")
+    if (
+        not isinstance(chat, dict)
+        or str(chat.get("id", "")) != settings.telegram_chat_id
+        or not isinstance(text, str)
+    ):
+        return {"status": "ignored"}
+
+    normalised = text.strip()
+    if normalised.lower() in {"/start", "/help"}:
+        response = "\n".join(
+            (
+                "LMIO 查询帮助",
+                "直接发送股票代码，例如：SNDK",
+                "也可以发送：/quote SNDK",
+                "发送 /status 查看 Finviz 连接状态。",
+                "系统只提供研究信息，不会执行交易。",
+            )
+        )
+    elif normalised.lower() == "/status":
+        latest = get_service().store.latest_provider_health()
+        if latest is None:
+            response = "LMIO 尚无 Finviz 刷新记录。请稍后再试。"
+        else:
+            response = "\n".join(
+                (
+                    "LMIO · Finviz 连接状态",
+                    f"状态：{latest['state']}",
+                    f"最近检查：{latest['created_at']}",
+                    "仅供研究与决策支持；不会执行交易。",
+                )
+            )
+    else:
+        symbol = parse_symbol_query(normalised)
+        if symbol is None:
+            response = "请输入有效股票代码，例如 SNDK，或发送 /help。"
+        else:
+            try:
+                snapshot = get_service().finviz_symbol_snapshot(symbol)
+            except RuntimeError:
+                response = f"{symbol} 的 Finviz 查询暂时失败。旧数据未被修改，请稍后重试。"
+            else:
+                response = (
+                    format_symbol_snapshot(snapshot)
+                    if snapshot is not None
+                    else f"Finviz 当前没有返回 {symbol} 的可验证数据。"
+                )
+
+    delivery = queue_or_send(
+        get_service().store,
+        response,
+        bot_token=settings.telegram_bot_token,
+        chat_id=settings.telegram_chat_id,
+        kind=MessageKind.IMMEDIATE_ALERT,
+        max_per_hour=30,
+    )
+    audit_event("telegram_query_processed", delivery=delivery)
+    return {"status": "accepted", "delivery": delivery}
 
 
 @app.get("/favicon.ico", include_in_schema=False)

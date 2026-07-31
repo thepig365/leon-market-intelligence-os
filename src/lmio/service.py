@@ -54,9 +54,7 @@ class LMIOService:
     ) -> dict[str, object]:
         """Refresh authorised Finviz data and deliver one concise Telegram report."""
 
-        provider = provider or FinvizAPIProvider(
-            self.settings.finviz_api_token.get_secret_value()
-        )
+        provider = provider or FinvizAPIProvider(self.settings.finviz_api_token.get_secret_value())
         try:
             snapshots = provider.snapshots()
         except Exception as error:
@@ -95,6 +93,42 @@ class LMIOService:
             "telegram": delivery,
             "generated_at": report["generated_at"],
         }
+
+    def finviz_symbol_snapshot(
+        self,
+        symbol: str,
+        *,
+        provider: FinvizAPIProvider | None = None,
+    ) -> SecuritySnapshot | None:
+        """Fetch one current Finviz snapshot without running the full universe screen."""
+
+        provider = provider or FinvizAPIProvider(self.settings.finviz_api_token.get_secret_value())
+        try:
+            snapshots = provider.snapshots(symbols=[symbol])
+        except Exception as error:
+            self.store.append_json(
+                "provider_health",
+                {
+                    "provider": provider.name,
+                    "state": "unavailable",
+                    "payload": {"detail": type(error).__name__},
+                },
+            )
+            raise RuntimeError("Finviz symbol lookup failed safely") from error
+
+        health = provider.health()
+        self.store.append_json(
+            "provider_health",
+            {
+                "provider": health.provider,
+                "state": health.state.value,
+                "payload": {"detail": health.detail},
+            },
+        )
+        return next(
+            (snapshot for snapshot in snapshots if snapshot.symbol == symbol.upper()),
+            None,
+        )
 
     def run_daily(
         self,

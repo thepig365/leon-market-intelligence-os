@@ -48,6 +48,20 @@ def test_finviz_api_fetches_authorised_csv_without_exposing_token() -> None:
     assert "private-token" not in provider.health().detail
 
 
+def test_finviz_api_limits_an_authorised_lookup_to_requested_symbols() -> None:
+    calls: list[dict[str, str]] = []
+
+    def transport(_url: str, params: dict[str, str], _timeout: float) -> httpx.Response:
+        calls.append(params)
+        return response(200, (HEADER + ROW).encode())
+
+    provider = FinvizAPIProvider("private-token", transport=transport)
+
+    assert [item.symbol for item in provider.snapshots(symbols=["test"])] == ["TEST"]
+    assert calls[0]["t"] == "TEST"
+    assert "1 of 1 requested symbols" in provider.health().detail
+
+
 def test_finviz_api_backs_off_on_rate_limit() -> None:
     responses = [response(429), response(429), response(200, (HEADER + ROW).encode())]
     waits: list[float] = []
@@ -87,9 +101,7 @@ def test_refresh_runs_screen_and_queues_telegram_when_not_configured(tmp_path: P
         "private-token",
         transport=lambda *_args: response(200, (HEADER + ROW).encode()),
     )
-    service = LMIOService(
-        Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3")
-    )
+    service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
 
     result = service.refresh_finviz(provider=provider)
 
@@ -104,9 +116,7 @@ def test_refresh_preserves_existing_data_when_provider_fails(tmp_path: Path) -> 
         "private-token",
         transport=lambda *_args: response(503),
     )
-    service = LMIOService(
-        Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3")
-    )
+    service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
 
     with pytest.raises(RuntimeError, match="failed safely"):
         service.refresh_finviz(provider=provider)

@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from lmio.config import Settings
-from lmio.domain import NewsEvent
+from lmio.domain import NewsEvent, SecuritySnapshot
 from lmio.main import DASHBOARD_PAGES, NewsAnalysisInput, analyse_news_event, app
 from lmio.news import event_fingerprint
 from lmio.news_plan import ReactionEvidence
@@ -18,11 +18,12 @@ def request(
     path: str,
     *,
     headers: dict[str, str] | None = None,
+    json: dict[str, object] | None = None,
 ) -> httpx.Response:
     async def perform() -> httpx.Response:
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            return await client.request(method, path, headers=headers)
+            return await client.request(method, path, headers=headers, json=json)
 
     return asyncio.run(perform())
 
@@ -138,6 +139,68 @@ def test_scheduled_finviz_refresh_requires_cron_secret(
     assert allowed.status_code == 200
     assert preview_allowed.status_code == 200
     assert allowed.json()["telegram"] == "sent"
+
+
+def test_telegram_webhook_only_answers_leons_chat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        telegram_bot_token="123456789:abcdefghijklmnopqrstuvwxyzABCDE",
+        telegram_chat_id="8873919191",
+        telegram_webhook_secret="webhook-secret",
+        finviz_api_token="private-token",
+    )
+    snapshot = SecuritySnapshot(
+        symbol="SNDK",
+        company="Sandisk Corp",
+        source="finviz_elite_api",
+        price=44,
+        market_cap_m=20_000,
+        average_dollar_volume_m=100,
+        relative_volume=1.2,
+        rsi_14=55,
+        chart_pattern="Channel Up",
+    )
+
+    class TelegramService:
+        store = object()
+
+        def finviz_symbol_snapshot(self, symbol: str) -> SecuritySnapshot | None:
+            return snapshot if symbol == "SNDK" else None
+
+    deliveries: list[str] = []
+    monkeypatch.setattr("lmio.main.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.security.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.main.get_service", lambda: TelegramService())
+    monkeypatch.setattr(
+        "lmio.main.queue_or_send",
+        lambda _store, message, **_kwargs: deliveries.append(message) or "sent",
+    )
+
+    denied = request(
+        "POST",
+        "/api/v1/telegram/webhook",
+        headers={"x-telegram-bot-api-secret-token": "wrong"},
+        json={"message": {"chat": {"id": 8873919191}, "text": "SNDK"}},
+    )
+    ignored = request(
+        "POST",
+        "/api/v1/telegram/webhook",
+        headers={"x-telegram-bot-api-secret-token": "webhook-secret"},
+        json={"message": {"chat": {"id": 1}, "text": "SNDK"}},
+    )
+    accepted = request(
+        "POST",
+        "/api/v1/telegram/webhook",
+        headers={"x-telegram-bot-api-secret-token": "webhook-secret"},
+        json={"message": {"chat": {"id": 8873919191}, "text": "SNDK"}},
+    )
+
+    assert denied.status_code == 403
+    assert ignored.json()["status"] == "ignored"
+    assert accepted.json() == {"status": "accepted", "delivery": "sent"}
+    assert "SNDK Finviz 快照" in deliveries[0]
 
 
 def test_read_only_research_api_surface_is_available() -> None:

@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     )
     telegram_bot_token: str = Field(default="", validation_alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str = Field(default="", validation_alias="TELEGRAM_CHAT_ID")
+    telegram_webhook_secret: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="TELEGRAM_WEBHOOK_SECRET",
+    )
     finviz_api_token: SecretStr = Field(
         default=SecretStr(""),
         validation_alias="FINVIZ_API_TOKEN",
@@ -122,6 +126,11 @@ class Settings(BaseSettings):
             "sec_configured": bool(self.sec_user_agent.strip()),
             "telegram_configured": bool(
                 self.telegram_bot_token.strip() and self.telegram_chat_id.strip()
+            ),
+            "telegram_queries_configured": bool(
+                self.telegram_bot_token.strip()
+                and self.telegram_chat_id.strip()
+                and self.telegram_webhook_secret.get_secret_value()
             ),
             "finviz_configured": bool(self.finviz_api_token.get_secret_value()),
             "scheduled_refresh_configured": bool(self.cron_secret.get_secret_value()),

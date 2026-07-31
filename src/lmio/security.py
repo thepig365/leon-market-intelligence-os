@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import Header, HTTPException
 
 from lmio.config import get_settings
+from lmio.telegram import valid_webhook_secret
 
 
 def require_admin(
@@ -58,3 +59,16 @@ def require_cron(
         )
     if not valid_cron_credential(authorization, x_lmio_cron_key):
         raise HTTPException(status_code=401, detail="Invalid scheduled refresh credential.")
+
+
+def require_telegram_webhook(
+    x_telegram_bot_api_secret_token: Annotated[str | None, Header()] = None,
+) -> None:
+    expected = get_settings().telegram_webhook_secret.get_secret_value()
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="Telegram queries are disabled until the webhook secret is configured.",
+        )
+    if not valid_webhook_secret(x_telegram_bot_api_secret_token, expected):
+        raise HTTPException(status_code=403, detail="Invalid Telegram webhook secret.")

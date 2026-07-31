@@ -5,7 +5,12 @@ from pydantic import SecretStr
 
 from lmio.config import Settings
 from lmio.main import app
-from lmio.security import require_admin, require_cron, valid_cron_credential
+from lmio.security import (
+    require_admin,
+    require_cron,
+    require_telegram_webhook,
+    valid_cron_credential,
+)
 
 
 def test_admin_api_is_disabled_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -50,9 +55,12 @@ def test_cron_api_requires_bearer_secret(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_every_mutating_route_is_admin_protected() -> None:
     mutating_methods = {"POST", "PUT", "PATCH", "DELETE"}
+    accepted_guards = {require_admin, require_telegram_webhook}
 
     for route in app.routes:
         if not isinstance(route, APIRoute) or not route.methods.intersection(mutating_methods):
             continue
         dependencies = {dependency.call for dependency in route.dependant.dependencies}
-        assert require_admin in dependencies, f"{route.path} is missing require_admin"
+        assert dependencies.intersection(accepted_guards), (
+            f"{route.path} is missing an approved mutation guard"
+        )

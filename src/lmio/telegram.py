@@ -1,6 +1,7 @@
 """Quiet-by-default Telegram delivery with persistence-backed deduplication."""
 
 import hashlib
+import hmac
 import json
 import re
 from collections.abc import Callable
@@ -10,6 +11,8 @@ from urllib import parse, request
 
 import httpx
 
+from lmio.domain import SecuritySnapshot
+from lmio.screens import strategies_for
 from lmio.store import RuntimeStore
 from lmio.supabase_store import SupabaseRuntimeStore
 
@@ -18,6 +21,7 @@ MAX_RESPONSE_BYTES = 1024 * 1024
 DEFAULT_MAX_ATTEMPTS = 3
 BOT_TOKEN_PATTERN = re.compile(r"^[1-9]\d{5,14}:[A-Za-z0-9_-]{20,}$")
 CHAT_ID_PATTERN = re.compile(r"^(?:-?\d{1,24}|@[A-Za-z][A-Za-z0-9_]{4,31})$")
+SYMBOL_QUERY_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9.-]{0,9}$")
 TelegramTransport = Callable[[str, bytes, float, int], bytes]
 TelegramStore = RuntimeStore | SupabaseRuntimeStore
 
@@ -100,6 +104,64 @@ def _default_transport(url: str, body: bytes, timeout: float, max_bytes: int) ->
 
 def _valid_credentials(bot_token: str, chat_id: str) -> bool:
     return bool(BOT_TOKEN_PATTERN.fullmatch(bot_token) and CHAT_ID_PATTERN.fullmatch(chat_id))
+
+
+def valid_webhook_secret(provided: str | None, expected: str) -> bool:
+    """Compare Telegram's webhook secret without leaking timing information."""
+
+    return bool(provided and expected and hmac.compare_digest(provided, expected))
+
+
+def parse_symbol_query(text: str) -> str | None:
+    """Accept a plain ticker or `/quote TICKER` and reject all other input."""
+
+    normalised = text.strip()
+    if normalised.lower().startswith("/quote "):
+        normalised = normalised.split(maxsplit=1)[1].strip()
+    if not SYMBOL_QUERY_PATTERN.fullmatch(normalised):
+        return None
+    return normalised.upper()
+
+
+def format_symbol_snapshot(snapshot: SecuritySnapshot) -> str:
+    """Render one concise, human-readable Finviz response for Leon."""
+
+    def optional_number(label: str, value: float | None, suffix: str = "") -> str:
+        return f"{label}：{value:.2f}{suffix}" if value is not None else f"{label}：暂无数据"
+
+    strategy_names = {
+        "quality_growth_momentum": "质量增长动量",
+        "earnings_revision_momentum": "盈利预期动量",
+        "institutional_accumulation": "机构累积",
+        "activist_catalyst": "积极股东催化",
+        "insider_value": "内部人价值",
+        "quality_at_reasonable_price": "合理价格质量",
+        "post_earnings_announcement_drift": "财报后延续",
+        "news_driven": "新闻驱动",
+        "oversold_reversal": "超卖反转",
+        "short_squeeze": "空头挤压",
+        "pattern_recognition": "图形识别",
+    }
+    matched = [
+        strategy_names.get(strategy.value, strategy.value) for strategy in strategies_for(snapshot)
+    ]
+    observed = snapshot.observed_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    return "\n".join(
+        (
+            f"LMIO · {snapshot.symbol} Finviz 快照",
+            f"公司：{snapshot.company}",
+            f"价格：US${snapshot.price:.2f}",
+            f"市值：US${snapshot.market_cap_m / 1000:.2f}B",
+            optional_number("相对成交量", snapshot.relative_volume),
+            optional_number("6个月相对强度", snapshot.relative_strength_6m, "%"),
+            optional_number("RSI(14)", snapshot.rsi_14),
+            f"图形：{snapshot.chart_pattern or 'Finviz 暂无图形标记'}",
+            f"匹配策略：{'、'.join(matched) if matched else '当前未通过已批准筛选条件'}",
+            f"数据时间：{observed}",
+            "来源：Finviz Elite API",
+            "仅供研究与决策支持；不会执行交易。",
+        )
+    )
 
 
 def queue_or_send(
