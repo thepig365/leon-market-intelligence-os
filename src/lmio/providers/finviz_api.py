@@ -1,5 +1,6 @@
 """Server-side Finviz Elite API adapter for authorised internal research."""
 
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from time import sleep
@@ -11,6 +12,9 @@ from lmio.providers.base import ProviderHealth, ProviderState
 from lmio.providers.contracts import MarketDataProvider
 from lmio.providers.csv_snapshot import MAX_CSV_BYTES
 from lmio.providers.finviz_csv import FinvizCSVProvider
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 FINVIZ_EXPORT_URL = "https://elite.finviz.com/export/screener"
 FINVIZ_COLUMNS = (

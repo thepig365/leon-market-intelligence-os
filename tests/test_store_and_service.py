@@ -63,6 +63,28 @@ def test_authorised_snapshot_never_reuses_synthetic_market_regime(tmp_path: Path
     assert snapshots["regime"]["label"] == "Risk-On"
 
 
+def test_authorised_refresh_persists_only_screen_candidates(tmp_path: Path) -> None:
+    service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
+    service.run_demo_daily()
+    source_items = service.store.latest_json("universe_runs")
+    assert source_items is not None
+
+    service.run_daily(
+        [SecuritySnapshot.model_validate(item) for item in source_items],
+        data_mode="finviz_elite_api",
+    )
+
+    candidate_symbols = {
+        item["symbol"] for item in service.store.latest_json("screen_runs") or []
+    }
+    stored_symbols = {
+        item["symbol"]
+        for item in service.store.history_json("provider_snapshots", limit=100)
+        if item["provider"] == "finviz_elite_api"
+    }
+    assert stored_symbols == candidate_symbols
+
+
 def test_latest_candidates_produce_versioned_research_packs(tmp_path: Path) -> None:
     service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
     service.run_demo_daily()

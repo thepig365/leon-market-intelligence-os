@@ -101,7 +101,28 @@ class LMIOService:
         data_mode: str,
         valuations: dict[str, ValuationResult] | None = None,
     ) -> dict[str, object]:
-        for snapshot in snapshots:
+        policy = UniversePolicy()
+        investable = build_investable_universe(snapshots, policy)
+        serialised = [item.model_dump(mode="json") for item in investable]
+        input_hash = hashlib.sha256(json.dumps(serialised, sort_keys=True).encode()).hexdigest()
+        universe_id = self.store.append_json(
+            "universe_runs",
+            {
+                "policy_version": policy.version,
+                "input_count": len(snapshots),
+                "investable_count": len(investable),
+                "input_hash": input_hash,
+                "payload": serialised,
+            },
+        )
+        candidates = run_core_screens(investable)
+        candidate_symbols = {candidate.symbol for candidate in candidates}
+        snapshots_to_persist = (
+            snapshots
+            if data_mode == "synthetic_replay"
+            else [snapshot for snapshot in snapshots if snapshot.symbol in candidate_symbols]
+        )
+        for snapshot in snapshots_to_persist:
             snapshot_payload = snapshot.model_dump(mode="json")
             snapshot_fingerprint = hashlib.sha256(
                 json.dumps(
@@ -122,21 +143,6 @@ class LMIOService:
                 observed_at=str(snapshot_payload["observed_at"]),
                 payload=snapshot_payload,
             )
-        policy = UniversePolicy()
-        investable = build_investable_universe(snapshots, policy)
-        serialised = [item.model_dump(mode="json") for item in investable]
-        input_hash = hashlib.sha256(json.dumps(serialised, sort_keys=True).encode()).hexdigest()
-        universe_id = self.store.append_json(
-            "universe_runs",
-            {
-                "policy_version": policy.version,
-                "input_count": len(snapshots),
-                "investable_count": len(investable),
-                "input_hash": input_hash,
-                "payload": serialised,
-            },
-        )
-        candidates = run_core_screens(investable)
         for candidate in candidates:
             evidence_urls = [
                 item.source_url for item in candidate.evidence if item.source_url is not None
