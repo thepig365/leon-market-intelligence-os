@@ -15,6 +15,8 @@ evidence references. It does not create a duplicate project-memory system.
 - ten independent V1 strategy screens covering quality growth, revisions,
   institutional accumulation, activist catalysts, insider value, QARP, PEAD,
   verified news, oversold reversal and short-squeeze combinations;
+- one explainable pattern-recognition screen covering four approved shapes:
+  base breakouts, ascending triangles, double bottoms and uptrend pullbacks;
 - independent quality, valuation, opportunity and timing scores;
 - explicit missing-data confidence reduction;
 - Top 10 and Top 3 ranking without forcing an opportunity;
@@ -78,6 +80,7 @@ system to a vendor:
 
 ```bash
 uv run python -m lmio.cli import-csv --file /approved/path/snapshot.csv
+uv run python -m lmio.cli import-finviz --file /approved/path/finviz.csv
 ```
 
 The input must satisfy `docs/AUTHORISED_DATA_IMPORT.md`. A successful parse is

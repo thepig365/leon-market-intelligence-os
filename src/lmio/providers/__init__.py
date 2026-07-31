@@ -13,6 +13,7 @@ from .contracts import (
     ResearchWorker,
 )
 from .csv_snapshot import CSVSnapshotProvider
+from .finviz_csv import FinvizCSVProvider
 from .research import (
     OpenAIResearchWorker,
     ResearchSynthesis,
@@ -25,6 +26,7 @@ __all__ = [
     "DeferredOptionsFlowProvider",
     "DeferredSocialProvider",
     "EstimateRevisionProvider",
+    "FinvizCSVProvider",
     "FundamentalsProvider",
     "InsiderProvider",
     "InstitutionalProvider",

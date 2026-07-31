@@ -164,6 +164,8 @@ class CSVSnapshotProvider(MarketDataProvider):
                 for column in OPTIONAL_INT_COLUMNS:
                     if column in row:
                         values[column] = _int_or_none(row[column])
+                if "chart_pattern" in row:
+                    values["chart_pattern"] = row["chart_pattern"].strip() or None
                 calculated_completeness = sum(
                     values.get(column) is not None for column in SCORING_COLUMNS
                 ) / len(SCORING_COLUMNS)

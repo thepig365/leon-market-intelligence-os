@@ -74,11 +74,17 @@ def ready() -> dict[str, Any]:
     service = get_service()
     payload = health_payload()
     payload["integrations"] = settings.integration_readiness()
+    latest_provider = service.store.latest_provider_health()
     payload["provider_status"] = (
-        "configured_not_verified"
-        if any(settings.integration_readiness().values())
-        else "not_configured"
+        latest_provider["state"]
+        if latest_provider is not None
+        else (
+            "configured_not_verified"
+            if any(settings.integration_readiness().values())
+            else "not_configured"
+        )
     )
+    payload["latest_provider"] = latest_provider
     payload["store"] = {"status": "ready", "counts": service.store.counts()}
     audit_event("readiness_checked", environment=payload["environment"])
     return payload
@@ -92,12 +98,20 @@ def api_status() -> dict[str, Any]:
 @app.get("/api/v1/providers/health", tags=["system"])
 def providers_health() -> dict[str, Any]:
     readiness = get_settings().integration_readiness()
-    return {
+    providers = {
         name.removesuffix("_configured"): {
             "state": "configured_not_verified" if configured else "disabled",
         }
         for name, configured in readiness.items()
     }
+    latest_provider = get_service().store.latest_provider_health()
+    if latest_provider is not None:
+        providers[latest_provider["provider"]] = {
+            "state": latest_provider["state"],
+            "detail": latest_provider["payload"].get("detail"),
+            "checked_at": latest_provider["created_at"],
+        }
+    return providers
 
 
 app.get("/api/providers/health", tags=["system"])(providers_health)

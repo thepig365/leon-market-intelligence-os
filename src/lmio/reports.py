@@ -119,6 +119,24 @@ def classify_regime(
     )
 
 
+def unverified_regime(observed_at: datetime | None = None) -> MarketRegime:
+    """Return a fail-safe regime when benchmark evidence is unavailable."""
+
+    return MarketRegime(
+        label="Unverified",
+        confidence=0,
+        evidence=["当前数据源未提供可验证的 SPY、QQQ、IWM、VIX 与市场广度输入"],
+        contrary_evidence=[],
+        preferred_strategies=[],
+        suppressed_strategies=[],
+        risk_multiplier=0,
+        blocked_sectors=[],
+        blocked_symbols=[],
+        manual_review_required=True,
+        observed_at=observed_at or datetime.now(UTC),
+    )
+
+
 def _dedupe_symbols(candidates: list[ScreenCandidate]) -> list[ScreenCandidate]:
     selected: dict[str, ScreenCandidate] = {}
     for candidate in candidates:
@@ -204,9 +222,11 @@ def build_daily_report(
     else:
         lines.append("今日没有符合标准的交易计划。")
     lines.append("说明：这是研究与决策支持，不构成投资建议，也不会执行交易。")
-    warnings = []
-    if data_mode != "live":
+    warnings: list[str] = []
+    if data_mode == "synthetic_replay":
         warnings.append("当前使用明确标注的演示/回放数据，不代表实时市场。")
+    elif data_mode != "live":
+        warnings.append("当前使用授权导出快照，不是持续实时数据流；市场状态与估值仍需独立验证。")
     return DailyReport(
         generated_at=datetime.now(UTC),
         data_mode=data_mode,

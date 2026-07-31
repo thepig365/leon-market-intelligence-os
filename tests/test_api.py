@@ -32,6 +32,30 @@ def test_health_and_dashboard_are_readable() -> None:
     assert "不执行交易" in dashboard.text
 
 
+def test_ready_reports_latest_verified_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
+    service.store.append_json(
+        "provider_health",
+        {
+            "provider": "finviz_elite_csv",
+            "state": "ready",
+            "payload": {"detail": "Authorised export parsed successfully."},
+        },
+    )
+    monkeypatch.setattr("lmio.main.get_service", lambda: service)
+
+    response = request("GET", "/ready")
+    providers = request("GET", "/api/v1/providers/health")
+
+    assert response.status_code == 200
+    assert response.json()["provider_status"] == "ready"
+    assert response.json()["latest_provider"]["provider"] == "finviz_elite_csv"
+    assert providers.json()["finviz_elite_csv"]["state"] == "ready"
+
+
 def test_all_dashboard_pages_exist() -> None:
     for page in DASHBOARD_PAGES:
         response = request("GET", f"/dashboard/{page}")

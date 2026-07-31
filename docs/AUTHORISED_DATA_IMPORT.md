@@ -48,6 +48,29 @@ declared completeness value that exceeds the calculated value.
 uv run python -m lmio.cli import-csv --file /approved/path/snapshot.csv
 ```
 
+For a user-authenticated Finviz Elite screener export, use the dedicated
+normaliser:
+
+```bash
+uv run python -m lmio.cli import-finviz --file /approved/path/finviz.csv
+```
+
+The Finviz adapter reads the file timestamp as the export observation time,
+normalises Finviz's NASD exchange code to NASDAQ, converts its average-volume
+thousands into average dollar volume, excludes funds, shell companies,
+warrants, units, OTC rows and rows without investable-universe inputs, and
+maps only explicitly named fields. Missing analyst revisions, free-cash-flow
+margin, sector strength and other unavailable facts remain missing.
+
+Include Finviz's optional `Pattern` column to activate the explainable
+pattern-recognition screen. LMIO recognises only the four approved pattern
+families and leaves them at `awaiting_confirmation` until authorised historical
+price, volume and key-level data can verify a breakout or failure.
+
+The authorised raw Finviz export is licensed input. Keep it outside git and
+Bayview OS. The adapter does not store a password, browser cookie or Finviz
+session and does not scrape Finviz pages.
+
 The import:
 
 1. validates and normalises every row before running screens;

@@ -480,6 +480,22 @@ class RuntimeStore:
             ).fetchone()
         return json.loads(row["payload"]) if row else None
 
+    def latest_provider_health(self) -> dict[str, Any] | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                """
+                SELECT provider, state, payload, created_at
+                FROM provider_health
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        item["payload"] = json.loads(item["payload"])
+        return item
+
     def history_json(self, table: str, limit: int = 50) -> list[dict[str, Any]]:
         allowed = {
             "universe_runs",

@@ -17,6 +17,35 @@ class Strategy(StrEnum):
     NEWS_DRIVEN = "news_driven"
     OVERSOLD_REVERSAL = "oversold_reversal"
     SHORT_SQUEEZE = "short_squeeze"
+    PATTERN_RECOGNITION = "pattern_recognition"
+
+
+class PatternType(StrEnum):
+    BASE_BREAKOUT = "base_breakout"
+    ASCENDING_TRIANGLE = "ascending_triangle"
+    DOUBLE_BOTTOM = "double_bottom"
+    TREND_PULLBACK = "trend_pullback"
+
+
+class PatternStage(StrEnum):
+    FORMING = "forming"
+    AWAITING_CONFIRMATION = "awaiting_confirmation"
+    CONFIRMED = "confirmed"
+    FAILED = "failed"
+
+
+class PatternSignal(BaseModel):
+    """Explainable chart-pattern observation; never an order instruction."""
+
+    name_zh: str
+    name_en: str
+    pattern_type: PatternType
+    stage: PatternStage
+    source_pattern: str
+    key_level: str = "等待历史价格数据"
+    volume_confirmation: str = "等待成交量确认"
+    confirmation: str
+    invalidation: str
 
 
 class CandidateState(StrEnum):
@@ -77,6 +106,7 @@ class SecuritySnapshot(BaseModel):
     days_to_cover: float | None = None
     borrow_cost_pct: float | None = None
     news_impact_score: float | None = None
+    chart_pattern: str | None = None
     data_completeness: float = Field(default=1.0, ge=0, le=1)
 
 
@@ -113,6 +143,7 @@ class ScreenCandidate(BaseModel):
     horizon: str
     evidence: list[EvidenceItem]
     missing_fields: list[str] = Field(default_factory=list)
+    pattern: PatternSignal | None = None
 
 
 class CandidateTransition(BaseModel):

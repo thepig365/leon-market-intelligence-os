@@ -83,7 +83,11 @@ def weighted_total(scores: DimensionScores, strategy: Strategy) -> float:
         Strategy.INSIDER_VALUE,
     }:
         weights = (0.25, 0.25, 0.35, 0.15)
-    elif strategy in {Strategy.OVERSOLD_REVERSAL, Strategy.SHORT_SQUEEZE}:
+    elif strategy in {
+        Strategy.OVERSOLD_REVERSAL,
+        Strategy.SHORT_SQUEEZE,
+        Strategy.PATTERN_RECOGNITION,
+    }:
         weights = (0.15, 0.15, 0.25, 0.45)
     else:
         weights = (0.3, 0.3, 0.2, 0.2)

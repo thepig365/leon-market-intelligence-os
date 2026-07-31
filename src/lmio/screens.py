@@ -7,6 +7,7 @@ from lmio.domain import (
     SecuritySnapshot,
     Strategy,
 )
+from lmio.patterns import build_pattern_signal
 from lmio.scoring import score_snapshot, weighted_total
 
 REQUIRED_FIELDS = (
@@ -119,6 +120,8 @@ def strategies_for(item: SecuritySnapshot) -> list[Strategy]:
         and item.price_above_200d_pct >= 0
     ):
         strategies.append(Strategy.SHORT_SQUEEZE)
+    if build_pattern_signal(item.chart_pattern) is not None:
+        strategies.append(Strategy.PATTERN_RECOGNITION)
     return strategies
 
 
@@ -133,6 +136,7 @@ CATALYSTS = {
     Strategy.NEWS_DRIVEN: "高影响新闻获得量价确认",
     Strategy.OVERSOLD_REVERSAL: "超卖、成交与基本面未恶化的组合确认",
     Strategy.SHORT_SQUEEZE: "高空头仓位、回补天数与量价突破组合确认",
+    Strategy.PATTERN_RECOGNITION: "识别到四种批准图形之一，等待价格与成交量确认",
 }
 
 
@@ -140,6 +144,11 @@ def run_core_screens(items: list[SecuritySnapshot]) -> list[ScreenCandidate]:
     candidates: list[ScreenCandidate] = []
     for item in items:
         for strategy in strategies_for(item):
+            pattern = (
+                build_pattern_signal(item.chart_pattern)
+                if strategy is Strategy.PATTERN_RECOGNITION
+                else None
+            )
             scores = score_snapshot(item)
             total = weighted_total(scores, strategy)
             evidence = [
@@ -169,11 +178,20 @@ def run_core_screens(items: list[SecuritySnapshot]) -> list[ScreenCandidate]:
                     total_score=total,
                     market_price=item.price,
                     catalyst=CATALYSTS[strategy],
-                    next_confirmation="核对最新官方披露、估值与价格确认",
-                    invalidation="关键数据失效、指引转弱或价格结构破坏",
+                    next_confirmation=(
+                        pattern.confirmation
+                        if pattern is not None
+                        else "核对最新官方披露、估值与价格确认"
+                    ),
+                    invalidation=(
+                        pattern.invalidation
+                        if pattern is not None
+                        else "关键数据失效、指引转弱或价格结构破坏"
+                    ),
                     horizon="中期" if strategy is Strategy.QUALITY_GROWTH_MOMENTUM else "短至中期",
                     evidence=evidence,
                     missing_fields=missing_fields(item),
+                    pattern=pattern,
                 )
             )
     return sorted(candidates, key=lambda candidate: (-candidate.total_score, candidate.symbol))

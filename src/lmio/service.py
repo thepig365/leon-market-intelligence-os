@@ -13,7 +13,7 @@ from lmio.domain import (
     SecuritySnapshot,
     ValuationResult,
 )
-from lmio.reports import build_daily_report, classify_regime
+from lmio.reports import build_daily_report, classify_regime, unverified_regime
 from lmio.research import build_research_pack
 from lmio.screens import run_core_screens
 from lmio.store import RuntimeStore
@@ -124,7 +124,11 @@ class LMIOService:
                 "payload": [item.model_dump(mode="json") for item in candidates],
             },
         )
-        regime = classify_regime(0.7, 1.0, 0.4, 17.5, 58)
+        regime = (
+            classify_regime(0.7, 1.0, 0.4, 17.5, 58)
+            if data_mode == "synthetic_replay"
+            else unverified_regime()
+        )
         report = build_daily_report(
             candidates,
             universe_checked=len(snapshots),

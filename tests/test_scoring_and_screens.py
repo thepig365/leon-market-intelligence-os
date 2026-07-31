@@ -78,7 +78,23 @@ def test_all_active_v1_strategies_can_run_independently() -> None:
             "borrow_cost_pct": 8,
             "news_impact_score": 85,
             "relative_volume": 2,
+            "chart_pattern": "Double Bottom",
         }
     )
 
     assert set(strategies_for(item)) == set(Strategy)
+
+
+def test_pattern_candidate_exposes_confirmation_and_invalidation() -> None:
+    item = demo_universe()[0].model_copy(update={"chart_pattern": "Ascending Triangle"})
+
+    candidate = next(
+        candidate
+        for candidate in run_core_screens([item])
+        if candidate.strategy is Strategy.PATTERN_RECOGNITION
+    )
+
+    assert candidate.pattern is not None
+    assert candidate.pattern.name_zh == "上升三角形"
+    assert "顶部阻力" in candidate.next_confirmation
+    assert "趋势支撑" in candidate.invalidation

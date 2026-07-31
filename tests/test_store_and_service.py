@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from lmio.config import Settings
-from lmio.domain import NewsEvent
+from lmio.domain import NewsEvent, SecuritySnapshot
 from lmio.news import event_fingerprint
 from lmio.service import LMIOService
 
@@ -40,6 +40,27 @@ def test_meta_valuation_is_versioned(tmp_path: Path) -> None:
     assert service.store.counts()["valuation_runs"] == 1
     assert service.store.counts()["research_packs"] == 0
     assert service.store.counts()["conditional_plans"] == 0
+
+
+def test_authorised_snapshot_never_reuses_synthetic_market_regime(tmp_path: Path) -> None:
+    service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
+    snapshots = service.run_demo_daily()
+    source_items = service.store.latest_json("universe_runs")
+    assert source_items is not None
+
+    report = service.run_daily(
+        [SecuritySnapshot.model_validate(item) for item in source_items],
+        data_mode="finviz_elite_csv",
+    )
+
+    assert report["regime"]["label"] == "Unverified"
+    assert report["regime"]["confidence"] == 0
+    assert report["regime"]["manual_review_required"] is True
+    assert report["warnings"] == [
+        "当前使用授权导出快照，不是持续实时数据流；市场状态与估值仍需独立验证。"
+    ]
+    assert "SPY +0.70%" not in str(report)
+    assert snapshots["regime"]["label"] == "Risk-On"
 
 
 def test_latest_candidates_produce_versioned_research_packs(tmp_path: Path) -> None:
