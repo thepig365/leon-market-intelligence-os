@@ -39,8 +39,10 @@ def test_cron_api_requires_bearer_secret(monkeypatch: pytest.MonkeyPatch) -> Non
     )
 
     assert valid_cron_credential("Bearer scheduled-test-key") is True
+    assert valid_cron_credential(None, "scheduled-test-key") is True
     assert valid_cron_credential("scheduled-test-key") is False
     require_cron("Bearer scheduled-test-key")
+    require_cron(None, "scheduled-test-key")
     with pytest.raises(HTTPException) as result:
         require_cron("Bearer wrong")
     assert result.value.status_code == 401

@@ -54,7 +54,10 @@ async def require_runtime_read_key(request: Request, call_next: Any) -> Response
     read_allowed = valid_read_credential(request.headers.get("x-lmio-read-key"))
     cron_allowed = (
         request.url.path == "/api/v1/providers/finviz/refresh"
-        and valid_cron_credential(request.headers.get("authorization"))
+        and valid_cron_credential(
+            request.headers.get("authorization"),
+            request.headers.get("x-lmio-cron-key"),
+        )
     )
     if request.url.path not in {"/health", "/favicon.ico"} and not (
         read_allowed or cron_allowed

@@ -128,9 +128,15 @@ def test_scheduled_finviz_refresh_requires_cron_secret(
         "/api/v1/providers/finviz/refresh",
         headers={"authorization": "Bearer scheduled-test-key"},
     )
+    preview_allowed = request(
+        "GET",
+        "/api/v1/providers/finviz/refresh",
+        headers={"x-lmio-cron-key": "scheduled-test-key"},
+    )
 
     assert denied.status_code == 401
     assert allowed.status_code == 200
+    assert preview_allowed.status_code == 200
     assert allowed.json()["telegram"] == "sent"
 
 
