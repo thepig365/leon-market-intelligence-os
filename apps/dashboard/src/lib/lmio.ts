@@ -1,3 +1,5 @@
+import { headers } from "next/headers";
+
 export type LMIOResult =
   | { state: "ready"; data: unknown; checkedAt: string }
   | { state: "empty"; message: string; checkedAt: string }
@@ -7,11 +9,14 @@ function apiBaseUrl(): string {
   return (process.env.LMIO_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 }
 
-function runtimeHeaders(): HeadersInit {
+async function runtimeHeaders(): Promise<HeadersInit> {
   const key = process.env.LMIO_READ_API_KEY?.trim();
-  return key
-    ? { Accept: "application/json", "x-lmio-read-key": key }
-    : { Accept: "application/json" };
+  const oidcToken = (await headers()).get("x-vercel-oidc-token");
+  return {
+    Accept: "application/json",
+    ...(key ? { "x-lmio-read-key": key } : {}),
+    ...(oidcToken ? { "x-vercel-trusted-oidc-idp-token": oidcToken } : {}),
+  };
 }
 
 export async function readLMIO(endpoint: string | null): Promise<LMIOResult> {
@@ -27,7 +32,7 @@ export async function readLMIO(endpoint: string | null): Promise<LMIOResult> {
   try {
     const response = await fetch(`${apiBaseUrl()}${endpoint}`, {
       cache: "no-store",
-      headers: runtimeHeaders(),
+      headers: await runtimeHeaders(),
       signal: AbortSignal.timeout(5_000),
     });
     if (response.status === 404) {
