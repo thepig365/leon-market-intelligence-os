@@ -21,6 +21,19 @@ LMIO dashboard
 Bayview OS is canonical for project memory. LMIO is canonical for detailed
 market-runtime evidence. No high-volume market table belongs in Bayview OS.
 
+The dashboard reuses the approved Bayview Supabase identity and claims. It does
+not duplicate users or issue a separate identity. The runtime store is a
+separate `lmio_*` table namespace in the same Supabase project:
+
+```text
+Browser -> LMIO dashboard -> Bayview Supabase identity
+                         \-> server-only LMIO_READ_API_KEY -> FastAPI
+FastAPI -> server-only service role -> lmio_* tables
+```
+
+No anonymous or authenticated browser role has table privileges or an RLS
+policy. The Supabase service-role key exists only in the FastAPI environment.
+
 ## Deterministic pipeline
 
 ```text
@@ -56,9 +69,10 @@ fundamentals provider activation must pass a cost and terms review.
 
 ## Persistence
 
-Development uses a versioned SQLite schema. Production may use PostgreSQL after
-the production readiness gate. Financial, score, valuation, plan and outcome
-history is append-only or versioned.
+Development uses a versioned SQLite schema. Production uses migration 006 in
+the approved Bayview Supabase project. Financial, score, valuation, plan and
+outcome history is append-only or versioned. SQLite remains a deterministic
+test and recovery fixture; it is not the production source of truth.
 
 Migration 003 adds normalised symbols, provider snapshots, candidate and plan
 transition evidence, ownership events, signals, feedback, strategy performance

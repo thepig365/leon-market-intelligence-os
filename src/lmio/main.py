@@ -5,8 +5,8 @@ from functools import lru_cache
 from html import escape
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, Response
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from lmio import __version__
@@ -16,7 +16,7 @@ from lmio.domain import NewsEvent
 from lmio.news import news_impact_score
 from lmio.news_plan import ReactionEvidence, propose_news_plan
 from lmio.plans import ConditionalPlan, PlanState, transition_with_evidence
-from lmio.security import require_admin
+from lmio.security import require_admin, valid_read_credential
 from lmio.service import LMIOService
 from lmio.telegram import queue_or_send
 
@@ -41,6 +41,20 @@ DASHBOARD_PAGES = {
     "unusual-options": "异常期权（延后）",
     "paper-trades": "模拟交易（关闭）",
 }
+
+
+@app.middleware("http")
+async def require_runtime_read_key(request: Request, call_next: Any) -> Response:
+    """Keep runtime evidence private while leaving a minimal health probe."""
+
+    if request.url.path not in {"/health", "/favicon.ico"} and not valid_read_credential(
+        request.headers.get("x-lmio-read-key")
+    ):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid LMIO runtime read credential."},
+        )
+    return await call_next(request)
 
 
 @lru_cache

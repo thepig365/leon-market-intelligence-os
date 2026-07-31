@@ -1,8 +1,7 @@
 # Backup and Recovery
 
-This is the local V1 procedure for the versioned SQLite runtime store. A
-production PostgreSQL/Supabase procedure must be approved and tested against
-the selected deployment before it replaces this document.
+SQLite is the local development procedure. Production uses the approved
+Supabase project and must follow the managed export/recovery procedure below.
 
 ## Backup
 
@@ -44,3 +43,21 @@ store. Do not merge partially recovered records into permanent history without
 a documented reconciliation.
 
 No untested recovery time or data-loss guarantee is claimed by V1.
+
+## Supabase production procedure
+
+1. Confirm the project backup/export feature available on the current plan
+   without purchasing an upgrade.
+2. Before each schema change, export only the `lmio_*` tables and record the
+   application commit and migration version.
+3. Verify the export is readable in an isolated environment; never overwrite
+   the active tables as a test.
+4. For an incident, stop LMIO writers, preserve the affected rows, and restore
+   into isolated replacement tables first.
+5. Compare counts, schema version, latest timestamps and representative
+   payloads before Leon approves any cutover.
+6. Keep Bayview OS project memory separate from LMIO runtime recovery.
+
+If the existing Supabase plan does not provide the required backup capability,
+the runtime remains review-only until a no-cost export process is proven or
+Leon separately approves a paid recovery option.

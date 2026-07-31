@@ -19,3 +19,12 @@ def require_admin(
         )
     if not x_lmio_key or not hmac.compare_digest(x_lmio_key, expected):
         raise HTTPException(status_code=401, detail="Invalid LMIO administrator credential.")
+
+
+def valid_read_credential(value: str | None) -> bool:
+    """Validate the server-to-server dashboard credential when configured."""
+
+    expected = get_settings().read_api_key.get_secret_value()
+    if not expected:
+        return get_settings().environment in {"local", "test"}
+    return bool(value and hmac.compare_digest(value, expected))

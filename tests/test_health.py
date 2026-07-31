@@ -16,6 +16,7 @@ def test_health_reports_hard_safety_state() -> None:
         "can_trade": False,
         "live_trading_enabled": False,
         "paper_trading_enabled": False,
+        "store_backend": "sqlite",
     }
 
 
@@ -28,6 +29,7 @@ def test_service_readiness_does_not_claim_integrations_are_working(tmp_path: Pat
         "telegram_configured": False,
         "openai_research_configured": False,
         "admin_api_key_configured": False,
+        "read_api_key_configured": False,
     }
     assert service.store.counts()["reports"] == 0
 

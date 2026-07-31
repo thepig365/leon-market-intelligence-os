@@ -13,11 +13,16 @@ from lmio.news_plan import ReactionEvidence
 from lmio.service import LMIOService
 
 
-def request(method: str, path: str) -> httpx.Response:
+def request(
+    method: str,
+    path: str,
+    *,
+    headers: dict[str, str] | None = None,
+) -> httpx.Response:
     async def perform() -> httpx.Response:
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            return await client.request(method, path)
+            return await client.request(method, path, headers=headers)
 
     return asyncio.run(perform())
 
@@ -30,6 +35,28 @@ def test_health_and_dashboard_are_readable() -> None:
     dashboard = request("GET", "/")
     assert dashboard.status_code == 200
     assert "不执行交易" in dashboard.text
+
+
+def test_runtime_read_key_protects_non_health_routes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        environment="production",
+        read_api_key="server-to-server-secret",
+    )
+    monkeypatch.setattr("lmio.security.get_settings", lambda: settings)
+
+    assert request("GET", "/health").status_code == 200
+    assert request("GET", "/api/status").status_code == 401
+    assert (
+        request(
+            "GET",
+            "/api/status",
+            headers={"x-lmio-read-key": "server-to-server-secret"},
+        ).status_code
+        == 200
+    )
 
 
 def test_ready_reports_latest_verified_provider(

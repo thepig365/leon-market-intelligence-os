@@ -3,12 +3,15 @@
 import hashlib
 import json
 import re
-import sqlite3
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from urllib import parse, request
 
+import httpx
+
 from lmio.store import RuntimeStore
+from lmio.supabase_store import SupabaseRuntimeStore
 
 MAX_MESSAGE_CHARS = 4096
 MAX_RESPONSE_BYTES = 1024 * 1024
@@ -16,6 +19,7 @@ DEFAULT_MAX_ATTEMPTS = 3
 BOT_TOKEN_PATTERN = re.compile(r"^[1-9]\d{5,14}:[A-Za-z0-9_-]{20,}$")
 CHAT_ID_PATTERN = re.compile(r"^(?:-?\d{1,24}|@[A-Za-z][A-Za-z0-9_]{4,31})$")
 TelegramTransport = Callable[[str, bytes, float, int], bytes]
+TelegramStore = RuntimeStore | SupabaseRuntimeStore
 
 
 class MessageKind(StrEnum):
@@ -62,7 +66,7 @@ def format_message(
 
 
 def _persist_delivery(
-    store: RuntimeStore,
+    store: TelegramStore,
     *,
     key: str,
     status: str,
@@ -72,46 +76,13 @@ def _persist_delivery(
     error: str | None = None,
     attempt_increment: int = 0,
 ) -> None:
-    with store.connection() as connection:
-        connection.execute(
-            """
-            INSERT INTO telegram_deliveries
-                (
-                    dedupe_key,
-                    status,
-                    payload,
-                    provider_message_id,
-                    attempt_count,
-                    last_attempt_at
-                )
-            VALUES (
-                ?, ?, ?, ?, ?,
-                CASE WHEN ? > 0 THEN CURRENT_TIMESTAMP ELSE NULL END
-            )
-            ON CONFLICT(dedupe_key) DO UPDATE SET
-                status = excluded.status,
-                payload = excluded.payload,
-                provider_message_id = excluded.provider_message_id,
-                attempt_count = (
-                    telegram_deliveries.attempt_count + excluded.attempt_count
-                ),
-                last_attempt_at = CASE
-                    WHEN excluded.attempt_count > 0 THEN CURRENT_TIMESTAMP
-                    ELSE telegram_deliveries.last_attempt_at
-                END
-            """,
-            (
-                key,
-                status,
-                json.dumps(
-                    {"message": message, "kind": kind, "error": error},
-                    ensure_ascii=False,
-                ),
-                provider_message_id,
-                attempt_increment,
-                attempt_increment,
-            ),
-        )
+    store.upsert_telegram_delivery(
+        key=key,
+        status=status,
+        payload={"message": message, "kind": kind, "error": error},
+        provider_message_id=provider_message_id,
+        attempt_increment=attempt_increment,
+    )
 
 
 def message_key(message: str) -> str:
@@ -132,7 +103,7 @@ def _valid_credentials(bot_token: str, chat_id: str) -> bool:
 
 
 def queue_or_send(
-    store: RuntimeStore,
+    store: TelegramStore,
     message: str,
     *,
     bot_token: str = "",
@@ -146,35 +117,22 @@ def queue_or_send(
 
     key = message_key(message)
     store.migrate()
-    with store.connection() as connection:
-        existing = connection.execute(
-            """
-            SELECT status, attempt_count
-            FROM telegram_deliveries
-            WHERE dedupe_key = ?
-            """,
-            (key,),
-        ).fetchone()
-        if existing and existing["status"] == "sent":
-            return str(existing["status"])
-        attempt_count = int(existing["attempt_count"]) if existing else 0
-        if attempt_count >= max_attempts:
-            _persist_delivery(
-                store,
-                key=key,
-                status="failed_exhausted",
-                message=message,
-                kind=kind,
-                provider_message_id=None,
-                error="MaxAttemptsExceeded",
-            )
-            return "failed_exhausted"
-        sent_last_hour = connection.execute(
-            """
-            SELECT COUNT(*) FROM telegram_deliveries
-            WHERE status = 'sent' AND created_at >= datetime('now', '-1 hour')
-            """
-        ).fetchone()[0]
+    existing = store.telegram_delivery(key)
+    if existing and existing["status"] == "sent":
+        return str(existing["status"])
+    attempt_count = int(existing["attempt_count"]) if existing else 0
+    if attempt_count >= max_attempts:
+        _persist_delivery(
+            store,
+            key=key,
+            status="failed_exhausted",
+            message=message,
+            kind=kind,
+            provider_message_id=None,
+            error="MaxAttemptsExceeded",
+        )
+        return "failed_exhausted"
+    sent_last_hour = store.sent_telegram_count_since(datetime.now(UTC) - timedelta(hours=1))
 
     if not message.strip() or len(message) > MAX_MESSAGE_CHARS:
         _persist_delivery(
@@ -264,8 +222,8 @@ def queue_or_send(
     return "sent"
 
 
-def delivery_count(store: RuntimeStore) -> int:
+def delivery_count(store: TelegramStore) -> int:
     try:
         return store.counts()["telegram_deliveries"]
-    except sqlite3.OperationalError:
+    except (RuntimeError, httpx.HTTPError):
         return 0

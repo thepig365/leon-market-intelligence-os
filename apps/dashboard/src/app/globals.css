@@ -70,6 +70,31 @@ a:focus-visible {
   padding: 8px 12px;
 }
 
+.headerActions {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.signOutButton {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  min-height: 38px;
+  padding: 6px 12px;
+}
+
+.signOutButton:focus-visible,
+.signInForm button:focus-visible,
+.signInForm input:focus-visible {
+  outline: 3px solid #1f6a49;
+  outline-offset: 3px;
+}
+
 .nav {
   background: var(--surface);
   border-bottom: 1px solid var(--line);
@@ -91,6 +116,72 @@ footer {
   margin: 0 auto;
   max-width: 1380px;
   padding: 48px clamp(20px, 5vw, 72px);
+}
+
+.signInPage {
+  align-items: center;
+  display: flex;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.signInCard {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  margin: auto;
+  max-width: 580px;
+  padding: clamp(28px, 6vw, 58px);
+  width: 100%;
+}
+
+.signInCard h1 {
+  font-size: clamp(2.5rem, 7vw, 4.5rem);
+}
+
+.signInCard > p:not(.eyebrow) {
+  color: var(--muted);
+}
+
+.signInForm {
+  display: grid;
+  gap: 18px;
+  margin-top: 30px;
+}
+
+.signInForm label {
+  display: grid;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.signInForm input {
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font: inherit;
+  min-height: 48px;
+  padding: 10px 12px;
+}
+
+.signInForm button {
+  background: var(--accent);
+  border: 0;
+  color: white;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  min-height: 50px;
+}
+
+.formError {
+  background: #fff1ee;
+  border: 1px solid #b34231;
+  color: #7b271d !important;
+  padding: 12px;
+}
+
+.signInNote {
+  font-size: 0.85rem;
+  margin-top: 22px;
 }
 
 .hero {
@@ -459,6 +550,11 @@ footer {
     align-items: flex-start;
     flex-direction: column;
     gap: 18px;
+  }
+
+  .headerActions {
+    align-items: flex-start;
+    flex-wrap: wrap;
   }
 
   main {

@@ -4,6 +4,7 @@ import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -702,3 +703,75 @@ class RuntimeStore:
                 (fingerprint,),
             ).fetchone()
         return json.loads(row["payload"]) if row is not None else None
+
+    def telegram_delivery(self, key: str) -> dict[str, Any] | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                """
+                SELECT status, attempt_count
+                FROM telegram_deliveries
+                WHERE dedupe_key = ?
+                """,
+                (key,),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def sent_telegram_count_since(self, since: datetime) -> int:
+        value = since.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        with self.connection() as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM telegram_deliveries
+                WHERE status = 'sent' AND created_at >= ?
+                """,
+                (value,),
+            ).fetchone()
+        return int(row[0])
+
+    def upsert_telegram_delivery(
+        self,
+        *,
+        key: str,
+        status: str,
+        payload: dict[str, Any],
+        provider_message_id: str | None,
+        attempt_increment: int,
+    ) -> None:
+        with self.connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO telegram_deliveries
+                    (
+                        dedupe_key,
+                        status,
+                        payload,
+                        provider_message_id,
+                        attempt_count,
+                        last_attempt_at
+                    )
+                VALUES (
+                    ?, ?, ?, ?, ?,
+                    CASE WHEN ? > 0 THEN CURRENT_TIMESTAMP ELSE NULL END
+                )
+                ON CONFLICT(dedupe_key) DO UPDATE SET
+                    status = excluded.status,
+                    payload = excluded.payload,
+                    provider_message_id = excluded.provider_message_id,
+                    attempt_count = (
+                        telegram_deliveries.attempt_count + excluded.attempt_count
+                    ),
+                    last_attempt_at = CASE
+                        WHEN excluded.attempt_count > 0 THEN CURRENT_TIMESTAMP
+                        ELSE telegram_deliveries.last_attempt_at
+                    END
+                """,
+                (
+                    key,
+                    status,
+                    json.dumps(payload, ensure_ascii=False),
+                    provider_message_id,
+                    attempt_increment,
+                    attempt_increment,
+                ),
+            )

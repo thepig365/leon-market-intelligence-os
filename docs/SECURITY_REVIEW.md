@@ -1,13 +1,13 @@
 # LMIO V1 Security Review
 
-Reviewed: 2026-07-30  
-Scope: offline V1 runtime at the draft-review branch
+Reviewed: 2026-07-31
+Scope: protected review deployment architecture at the draft-review branch
 
 ## Result
 
-No blocker was found in the offline V1 boundary. This is not production
-authorization. Internet exposure, operational credentials and real data require
-the protected deployment gate and a new environment-level review.
+No blocker was found in the implementation boundary. This is not production
+authorization. The review deployment must still pass authentication, RLS,
+secret and recovery acceptance checks before production approval.
 
 ## Verified controls
 
@@ -16,6 +16,13 @@ the protected deployment gate and a new environment-level review.
   `PAPER_TRADING_ENABLED` when true.
 - Every mutating FastAPI route uses `require_admin`.
 - Mutations are disabled when `LMIO_ADMIN_API_KEY` is absent.
+- All runtime routes except `/health` and `/favicon.ico` require a distinct
+  constant-time checked server credential.
+- The dashboard reuses active Bayview private-beta claims and does not create a
+  second identity system.
+- Supabase runtime tables use an isolated `lmio_*` namespace with RLS enabled,
+  no browser policies and revoked anonymous/authenticated privileges.
+- The service-role key remains only in the FastAPI server environment.
 - Credential comparison uses constant-time comparison.
 - Secrets are environment-only and `.env` is excluded from Git.
 - Health output exposes booleans and states, not secret values.
@@ -38,7 +45,8 @@ the protected deployment gate and a new environment-level review.
 
 | Threat | V1 control | Remaining production action |
 | --- | --- | --- |
-| Unauthorised mutation | fail-closed admin header guard | private network/access layer, key rotation and rate limits |
+| Unauthorised read | Bayview identity plus server-to-server read key | review-deployment authentication acceptance |
+| Unauthorised mutation | fail-closed admin header guard | key rotation and rate limits |
 | Secret leakage | server environment, `SecretStr`, audit redaction | platform secret manager and log inspection |
 | Fabricated provider readiness | disabled/configured-not-verified states | record successful read-only provider checks |
 | Prompt/model overreach | evidence-only schema; deterministic calculations remain authoritative | approved model, budget and adversarial eval |
@@ -49,9 +57,10 @@ the protected deployment gate and a new environment-level review.
 ## Open external gates
 
 1. Authorised live-data rights, freshness and failure testing.
-2. Private production identity, network, TLS and platform configuration.
-3. Production backup storage, retention, encryption and recovery rehearsal.
-4. Exact desktop/mobile production acceptance testing.
+2. Review deployment identity, TLS and platform configuration.
+3. Supabase schema/RLS and server-only key verification.
+4. Production backup storage, retention, encryption and recovery rehearsal.
+5. Exact desktop/mobile production acceptance testing.
 
 ## Review trigger
 

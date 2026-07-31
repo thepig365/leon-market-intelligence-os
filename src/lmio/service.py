@@ -17,6 +17,7 @@ from lmio.reports import build_daily_report, classify_regime, unverified_regime
 from lmio.research import build_research_pack
 from lmio.screens import run_core_screens
 from lmio.store import RuntimeStore
+from lmio.supabase_store import SupabaseRuntimeStore
 from lmio.universe import UniversePolicy, build_investable_universe
 from lmio.valuation import run_valuation
 
@@ -24,7 +25,13 @@ from lmio.valuation import run_valuation
 class LMIOService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.store = RuntimeStore(settings.database_path)
+        if settings.store_backend == "supabase":
+            self.store = SupabaseRuntimeStore(
+                settings.supabase_url,
+                settings.supabase_service_role_key.get_secret_value(),
+            )
+        else:
+            self.store = RuntimeStore(settings.database_path)
         self.store.migrate()
 
     def run_demo_daily(self) -> dict[str, object]:

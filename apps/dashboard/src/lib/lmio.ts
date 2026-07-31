@@ -7,6 +7,13 @@ function apiBaseUrl(): string {
   return (process.env.LMIO_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 }
 
+function runtimeHeaders(): HeadersInit {
+  const key = process.env.LMIO_READ_API_KEY?.trim();
+  return key
+    ? { Accept: "application/json", "x-lmio-read-key": key }
+    : { Accept: "application/json" };
+}
+
 export async function readLMIO(endpoint: string | null): Promise<LMIOResult> {
   const checkedAt = new Date().toISOString();
   if (!endpoint) {
@@ -20,7 +27,7 @@ export async function readLMIO(endpoint: string | null): Promise<LMIOResult> {
   try {
     const response = await fetch(`${apiBaseUrl()}${endpoint}`, {
       cache: "no-store",
-      headers: { Accept: "application/json" },
+      headers: runtimeHeaders(),
       signal: AbortSignal.timeout(5_000),
     });
     if (response.status === 404) {

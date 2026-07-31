@@ -30,7 +30,8 @@ evidence references. It does not create a duplicate project-memory system.
   VWAP, opening-range structure and gap retention;
 - evidence-audited candidate and conditional-plan state machines;
 - Chinese daily brief and grouped, deduplicated, rate-limited Telegram outbox;
-- append-only/versioned local SQLite runtime store;
+- append-only/versioned local SQLite development store;
+- isolated, service-role-only Supabase production store;
 - multi-horizon signal outcomes and benchmarked strategy performance;
 - health, readiness and provider status;
 - responsive read-only FastAPI fallback command centre;
@@ -103,9 +104,9 @@ npm ci
 npm run dev
 ```
 
-Then open `http://127.0.0.1:3000`. The dashboard performs server-side,
-read-only requests to FastAPI and never receives provider or administrator
-credentials.
+Then open `http://127.0.0.1:3000`. The dashboard performs authenticated,
+server-side, read-only requests to FastAPI and never receives provider,
+service-role, runtime-read or administrator credentials.
 
 HTTP mutations require `LMIO_ADMIN_API_KEY` and the `X-LMIO-Key` request
 header. The trusted local CLI does not expose a remote mutation surface.
@@ -117,6 +118,9 @@ header. The trusted local CLI does not expose a remote mutation surface.
 - `OPENAI_API_KEY` and `LMIO_OPENAI_MODEL`: optional server-side,
   evidence-only research synthesis; both are blank and inactive by default;
 - `LMIO_ADMIN_API_KEY`: protects mutating HTTP endpoints.
+- `LMIO_READ_API_KEY`: protects runtime reads outside the minimal health probe;
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: enable the isolated
+  production store when `LMIO_STORE_BACKEND=supabase`.
 
 LMIO never reports an integration as working merely because its configuration
 exists. A successful read-only verification is required.
@@ -141,7 +145,9 @@ Operator references:
 
 ## Data boundary
 
-The local versioned SQLite store is the development default. Financial,
-screening, valuation, report and outcome runs append new records; recalculation
-does not silently overwrite history. Production PostgreSQL/Supabase activation
-and deployment remain protected steps.
+The local versioned SQLite store is the development default. The approved
+production design uses only `lmio_*` tables in the existing Bayview Supabase
+project. Row-level security denies browser access, and only the server-side
+service role can use those tables. Financial, screening, valuation, report and
+outcome runs append new records; recalculation does not silently overwrite
+history.

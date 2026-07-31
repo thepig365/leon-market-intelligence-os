@@ -5,7 +5,9 @@ It implements the 13 dashboard areas required by the governing specification
 and reads versioned evidence from the LMIO FastAPI runtime.
 
 The dashboard cannot execute an order. It does not receive the LMIO
-administrator key or any provider credential.
+administrator key, Supabase service-role key or any provider credential. It
+reuses the approved Bayview Supabase identity and requires active private-beta
+claims with an owner, operator or reviewer role.
 
 ## Local use
 
@@ -36,6 +38,9 @@ npm run build
 npm audit
 ```
 
-`LMIO_API_BASE_URL` is read only by the Next.js server. A protected deployment
-must point it at the private FastAPI service and place both applications behind
-the approved identity and network boundary.
+`LMIO_API_BASE_URL` and `LMIO_READ_API_KEY` are read only by the Next.js
+server. `NEXT_PUBLIC_SUPABASE_URL` and
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` support browser authentication; the
+publishable key is not a service-role key. A protected deployment must point to
+the private FastAPI service and use the same Bayview identity claims as Bayview
+OS.
