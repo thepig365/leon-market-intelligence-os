@@ -10,6 +10,7 @@ from lmio.security import (
     require_cron,
     require_telegram_webhook,
     valid_cron_credential,
+    valid_read_credential,
 )
 
 
@@ -51,6 +52,69 @@ def test_cron_api_requires_bearer_secret(monkeypatch: pytest.MonkeyPatch) -> Non
     with pytest.raises(HTTPException) as result:
         require_cron("Bearer wrong")
     assert result.value.status_code == 401
+
+
+@pytest.mark.parametrize("environment", ["preview", "production"])
+def test_public_hosts_fail_closed_without_read_key(
+    environment: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "lmio.security.get_settings",
+        lambda: Settings(_env_file=None, environment=environment),
+    )
+
+    assert valid_read_credential(None) is False
+    assert valid_read_credential("wrong") is False
+
+
+@pytest.mark.parametrize("environment", ["preview", "production"])
+def test_public_hosts_accept_only_correct_read_key(
+    environment: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "lmio.security.get_settings",
+        lambda: Settings(
+            _env_file=None,
+            environment=environment,
+            read_api_key=SecretStr("approved-read-key"),
+        ),
+    )
+
+    assert valid_read_credential(None) is False
+    assert valid_read_credential("wrong") is False
+    assert valid_read_credential("approved-read-key") is True
+
+
+def test_local_reads_require_explicit_insecure_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "lmio.security.get_settings",
+        lambda: Settings(_env_file=None, environment="local"),
+    )
+    assert valid_read_credential(None) is False
+
+    monkeypatch.setattr(
+        "lmio.security.get_settings",
+        lambda: Settings(
+            _env_file=None,
+            environment="local",
+            allow_insecure_local_reads=True,
+        ),
+    )
+    assert valid_read_credential(None) is True
+
+
+def test_controlled_test_environment_allows_read_bypass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "lmio.security.get_settings",
+        lambda: Settings(_env_file=None, environment="test"),
+    )
+    assert valid_read_credential(None) is True
 
 
 def test_every_mutating_route_is_admin_protected() -> None:

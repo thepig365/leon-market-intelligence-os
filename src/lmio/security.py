@@ -23,11 +23,16 @@ def require_admin(
 
 
 def valid_read_credential(value: str | None) -> bool:
-    """Validate the server-to-server dashboard credential when configured."""
+    """Validate private reads, with only explicit local or controlled-test bypasses."""
 
-    expected = get_settings().read_api_key.get_secret_value()
+    settings = get_settings()
+    expected = settings.read_api_key.get_secret_value()
+    if settings.environment == "test":
+        return True
+    if settings.environment == "local" and settings.allow_insecure_local_reads:
+        return True
     if not expected:
-        return get_settings().environment in {"local", "test"}
+        return False
     return bool(value and hmac.compare_digest(value, expected))
 
 

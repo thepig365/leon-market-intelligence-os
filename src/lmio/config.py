@@ -19,9 +19,13 @@ class Settings(BaseSettings):
         populate_by_name=True,
     )
 
-    environment: Literal["local", "test", "staging", "production"] = Field(
+    environment: Literal["local", "test", "preview", "production"] = Field(
         default="local",
         validation_alias=AliasChoices("LMIO_ENVIRONMENT", "ENVIRONMENT"),
+    )
+    allow_insecure_local_reads: bool = Field(
+        default=False,
+        validation_alias="LMIO_ALLOW_INSECURE_LOCAL_READS",
     )
     default_language: Literal["zh-CN"] = Field(
         default="zh-CN",
@@ -113,6 +117,9 @@ class Settings(BaseSettings):
 
         return {
             "environment": self.environment,
+            "insecure_local_reads_enabled": (
+                self.environment == "local" and self.allow_insecure_local_reads
+            ),
             "default_language": self.default_language,
             "market": self.market,
             "can_trade": self.can_trade,

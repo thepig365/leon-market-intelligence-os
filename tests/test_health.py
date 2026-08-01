@@ -10,13 +10,14 @@ def test_health_reports_hard_safety_state() -> None:
         "status": "ok",
         "service": "Leon Market Intelligence OS",
         "version": "0.2.0",
-        "environment": "local",
+        "environment": "test",
         "default_language": "zh-CN",
         "market": "US_EQUITIES",
         "can_trade": False,
         "live_trading_enabled": False,
         "paper_trading_enabled": False,
         "store_backend": "sqlite",
+        "insecure_local_reads_enabled": False,
     }
 
 

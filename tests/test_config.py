@@ -12,6 +12,7 @@ def test_safe_defaults_are_locked() -> None:
     assert settings.can_trade is False
     assert settings.live_trading_enabled is False
     assert settings.paper_trading_enabled is False
+    assert settings.allow_insecure_local_reads is False
     assert settings.finviz_api_token.get_secret_value() == ""
     assert settings.cron_secret.get_secret_value() == ""
     assert settings.parsed_sec_watchlist() == {
@@ -27,3 +28,8 @@ def test_safe_defaults_are_locked() -> None:
 def test_trading_activation_is_rejected(field: str) -> None:
     with pytest.raises(ValidationError, match="trading safety boundary violated"):
         Settings(_env_file=None, **{field: True})
+
+
+def test_unknown_runtime_environment_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, environment="unknown")
