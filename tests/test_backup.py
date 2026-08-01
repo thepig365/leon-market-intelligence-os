@@ -24,7 +24,7 @@ def test_backup_is_consistent_verified_and_non_destructive(tmp_path: Path) -> No
     assert active_path.exists()
     assert backup_path.exists()
     assert manifest["integrity"] == ["ok"]
-    assert manifest["schema_versions"] == [5]
+    assert manifest["schema_versions"] == [7]
     assert manifest["counts"] == store.counts()
     assert manifest["sha256"]
     assert manifest["bytes"] > 0
@@ -51,7 +51,7 @@ def test_backup_refuses_missing_or_memory_source(tmp_path: Path) -> None:
         RuntimeStore(":memory:").backup_to(tmp_path / "backup.sqlite3")
 
 
-def test_schema_five_upgrades_an_existing_schema_three_store(tmp_path: Path) -> None:
+def test_schema_six_upgrades_an_existing_schema_three_store(tmp_path: Path) -> None:
     path = tmp_path / "legacy.sqlite3"
     connection = sqlite3.connect(path)
     connection.executescript(
@@ -68,7 +68,7 @@ def test_schema_five_upgrades_an_existing_schema_three_store(tmp_path: Path) -> 
     store = RuntimeStore(path)
     store.migrate()
 
-    assert store.schema_versions() == [3, 4, 5]
+    assert store.schema_versions() == [3, 4, 5, 6, 7]
     with store.connection() as upgraded:
         row = upgraded.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'ingestion_dedup'"
@@ -104,7 +104,7 @@ def test_schema_five_adds_telegram_retry_fields_to_schema_four(
     store = RuntimeStore(path)
     store.migrate()
 
-    assert store.schema_versions() == [4, 5]
+    assert store.schema_versions() == [4, 5, 6, 7]
     with store.connection() as upgraded:
         row = upgraded.execute(
             """

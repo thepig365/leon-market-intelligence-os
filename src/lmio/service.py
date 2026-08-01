@@ -8,6 +8,7 @@ from lmio.config import Settings
 from lmio.demo import demo_universe, meta_acceptance_input
 from lmio.domain import (
     CandidateState,
+    DataProvenance,
     NewsEvent,
     ScreenCandidate,
     SecuritySnapshot,
@@ -43,7 +44,7 @@ class LMIOService:
         self.store.migrate()
 
     def run_demo_daily(self) -> dict[str, object]:
-        valuation = ValuationResult.model_validate(self.run_meta_acceptance())
+        valuation = run_valuation(meta_acceptance_input())
         return self.run_daily(
             demo_universe(),
             data_mode="synthetic_replay",
@@ -82,6 +83,8 @@ class LMIOService:
             },
         )
         report = self.run_daily(snapshots, data_mode=provider.name)
+        if report.get("provenance") != DataProvenance.LIVE_AUTHORISED:
+            raise RuntimeError("Only live authorised reports may be delivered to Telegram")
         delivery = queue_or_send(
             self.store,
             str(report["message_zh"]),
@@ -228,10 +231,52 @@ class LMIOService:
         data_mode: str,
         valuations: dict[str, ValuationResult] | None = None,
     ) -> dict[str, object]:
+        if not snapshots:
+            raise ValueError("A daily run requires at least one snapshot")
+        provenances = {snapshot.provenance for snapshot in snapshots}
+        if len(provenances) != 1:
+            raise ValueError("A daily run cannot mix provenance classes")
+        provenance = provenances.pop()
+        for valuation in (valuations or {}).values():
+            if valuation.provenance is not provenance:
+                raise ValueError("Valuation provenance must match snapshot provenance")
+
         policy = UniversePolicy()
         investable = build_investable_universe(snapshots, policy)
         serialised = [item.model_dump(mode="json") for item in investable]
         input_hash = hashlib.sha256(json.dumps(serialised, sort_keys=True).encode()).hexdigest()
+        candidates = run_core_screens(investable)
+        operational_candidates = candidates[:MAX_OPERATIONAL_CANDIDATES]
+        regime = (
+            classify_regime(0.7, 1.0, 0.4, 17.5, 58)
+            if provenance is DataProvenance.SYNTHETIC_REPLAY
+            else unverified_regime()
+        )
+        report = build_daily_report(
+            candidates,
+            universe_checked=len(snapshots),
+            investable=len(investable),
+            regime=regime,
+            data_mode=data_mode,
+            valuations=valuations,
+            provenance=provenance,
+        )
+        report_payload = report.model_dump(mode="json")
+        if not provenance.operational:
+            self.store.append_json(
+                "synthetic_records",
+                {
+                    "record_type": "daily_run",
+                    "provenance": provenance,
+                    "payload": {
+                        "input_hash": input_hash,
+                        "snapshots": serialised,
+                        "report": report_payload,
+                    },
+                },
+            )
+            return report_payload
+
         universe_id = self.store.append_json(
             "universe_runs",
             {
@@ -242,15 +287,8 @@ class LMIOService:
                 "payload": serialised,
             },
         )
-        candidates = run_core_screens(investable)
-        operational_candidates = candidates[:MAX_OPERATIONAL_CANDIDATES]
         candidate_symbols = {candidate.symbol for candidate in operational_candidates}
-        snapshots_to_persist = (
-            snapshots
-            if data_mode == "synthetic_replay"
-            else [snapshot for snapshot in snapshots if snapshot.symbol in candidate_symbols]
-        )
-        for snapshot in snapshots_to_persist:
+        for snapshot in [item for item in snapshots if item.symbol in candidate_symbols]:
             snapshot_payload = snapshot.model_dump(mode="json")
             snapshot_fingerprint = hashlib.sha256(
                 json.dumps(
@@ -317,35 +355,24 @@ class LMIOService:
                 "payload": [item.model_dump(mode="json") for item in candidates],
             },
         )
-        regime = (
-            classify_regime(0.7, 1.0, 0.4, 17.5, 58)
-            if data_mode == "synthetic_replay"
-            else unverified_regime()
-        )
-        report = build_daily_report(
-            candidates,
-            universe_checked=len(snapshots),
-            investable=len(investable),
-            regime=regime,
-            data_mode=data_mode,
-            valuations=valuations,
-        )
         self.store.append_json(
             "reports",
-            {"report_type": "daily", "payload": report.model_dump(mode="json")},
+            {"report_type": "daily", "payload": report_payload},
         )
-        return report.model_dump(mode="json")
+        return report_payload
 
     def run_meta_acceptance(self) -> dict[str, object]:
         data = meta_acceptance_input()
         result = run_valuation(data)
         self.store.append_json(
-            "valuation_runs",
+            "synthetic_records",
             {
-                "symbol": data.symbol,
-                "calculation_version": result.calculation_version,
-                "input_payload": data.model_dump(mode="json"),
-                "result_payload": result.model_dump(mode="json"),
+                "record_type": "valuation_acceptance",
+                "provenance": data.provenance,
+                "payload": {
+                    "input": data.model_dump(mode="json"),
+                    "result": result.model_dump(mode="json"),
+                },
             },
         )
         return result.model_dump(mode="json")

@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from lmio.domain import SecuritySnapshot, ValuationInput
+from lmio.domain import DataProvenance, SecuritySnapshot, ValuationInput
 
 
 def demo_universe() -> list[SecuritySnapshot]:
@@ -155,6 +155,7 @@ def demo_universe() -> list[SecuritySnapshot]:
             company=company,
             observed_at=observed,
             source="LMIO synthetic replay fixture",
+            provenance=DataProvenance.SYNTHETIC_REPLAY,
             price=price,
             market_cap_m=market_cap,
             average_dollar_volume_m=liquidity,
@@ -200,6 +201,7 @@ def meta_acceptance_input() -> ValuationInput:
 
     return ValuationInput(
         symbol="META",
+        provenance=DataProvenance.SYNTHETIC_REPLAY,
         operating_cash_flow=100_000,
         capex=70_000,
         maintenance_capex=25_000,

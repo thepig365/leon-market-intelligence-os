@@ -4,7 +4,7 @@ import csv
 from datetime import UTC, datetime, timedelta
 from io import StringIO
 
-from lmio.domain import SecuritySnapshot
+from lmio.domain import DataProvenance, SecuritySnapshot
 from lmio.providers.base import ProviderHealth, ProviderState
 from lmio.providers.contracts import MarketDataProvider
 
@@ -149,6 +149,7 @@ class CSVSnapshotProvider(MarketDataProvider):
                     "company": company,
                     "observed_at": observed_at,
                     "source": source,
+                    "provenance": DataProvenance.MANUAL_AUTHORISED,
                     "source_url": row.get("source_url") or None,
                     "price": float(row["price"]),
                     "market_cap_m": float(row["market_cap_m"]),

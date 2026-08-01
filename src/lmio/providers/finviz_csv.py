@@ -4,7 +4,7 @@ import csv
 from datetime import UTC, datetime, timedelta
 from io import StringIO
 
-from lmio.domain import SecuritySnapshot
+from lmio.domain import DataProvenance, SecuritySnapshot
 from lmio.providers.base import ProviderHealth, ProviderState
 from lmio.providers.contracts import MarketDataProvider
 from lmio.providers.csv_snapshot import MAX_CSV_BYTES, MAX_ROWS, SCORING_COLUMNS
@@ -105,6 +105,7 @@ class FinvizCSVProvider(MarketDataProvider):
         observed_at: datetime,
         now: datetime | None = None,
         max_age: timedelta = timedelta(hours=48),
+        provenance: DataProvenance = DataProvenance.HISTORICAL_AUTHORISED,
     ) -> list[SecuritySnapshot]:
         if len(content.encode()) > MAX_CSV_BYTES:
             raise ValueError("Finviz CSV exceeds the configured size limit")
@@ -169,6 +170,7 @@ class FinvizCSVProvider(MarketDataProvider):
                     "observed_at": observed_at,
                     "source": "Finviz Elite authorised export",
                     "source_url": "https://elite.finviz.com/screener",
+                    "provenance": provenance,
                     "price": price,
                     "market_cap_m": market_cap_m,
                     "average_dollar_volume_m": average_volume_thousands * price / 1000,

@@ -168,6 +168,7 @@ def run_core_screens(items: list[SecuritySnapshot]) -> list[ScreenCandidate]:
                 ScreenCandidate(
                     symbol=item.symbol,
                     company=item.company,
+                    provenance=item.provenance,
                     strategy=strategy,
                     state=(
                         CandidateState.RESEARCH_REQUIRED

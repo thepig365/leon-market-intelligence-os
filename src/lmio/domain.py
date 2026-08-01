@@ -20,6 +20,24 @@ class Strategy(StrEnum):
     PATTERN_RECOGNITION = "pattern_recognition"
 
 
+class DataProvenance(StrEnum):
+    """Authoritative provenance classes carried by every analytical record."""
+
+    LIVE_AUTHORISED = "live_authorised"
+    HISTORICAL_AUTHORISED = "historical_authorised"
+    MANUAL_AUTHORISED = "manual_authorised"
+    SYNTHETIC_REPLAY = "synthetic_replay"
+    TEST_FIXTURE = "test_fixture"
+
+    @property
+    def operational(self) -> bool:
+        return self in {
+            self.LIVE_AUTHORISED,
+            self.HISTORICAL_AUTHORISED,
+            self.MANUAL_AUTHORISED,
+        }
+
+
 class PatternType(StrEnum):
     BASE_BREAKOUT = "base_breakout"
     ASCENDING_TRIANGLE = "ascending_triangle"
@@ -74,6 +92,7 @@ class SecuritySnapshot(BaseModel):
     observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     source: str
     source_url: str | None = None
+    provenance: DataProvenance = DataProvenance.TEST_FIXTURE
     price: float = Field(gt=0)
     market_cap_m: float = Field(gt=0)
     average_dollar_volume_m: float = Field(ge=0)
@@ -131,6 +150,7 @@ class DimensionScores(BaseModel):
 class ScreenCandidate(BaseModel):
     symbol: str
     company: str
+    provenance: DataProvenance = DataProvenance.TEST_FIXTURE
     strategy: Strategy
     state: CandidateState
     scores: DimensionScores
@@ -159,6 +179,7 @@ class CandidateTransition(BaseModel):
 
 class ValuationInput(BaseModel):
     symbol: str
+    provenance: DataProvenance = DataProvenance.TEST_FIXTURE
     operating_cash_flow: float
     capex: float
     finance_lease_principal: float = 0
@@ -195,6 +216,7 @@ class ValuationPerspective(BaseModel):
 
 class ValuationResult(BaseModel):
     symbol: str
+    provenance: DataProvenance = DataProvenance.TEST_FIXTURE
     strict_fcf: ValuationPerspective
     normalised_owner_earnings: ValuationPerspective
     multi_model_fair_value: ValuationPerspective
@@ -262,6 +284,7 @@ class DecisionCard(BaseModel):
 class DailyReport(BaseModel):
     generated_at: datetime
     data_mode: str
+    provenance: DataProvenance
     regime: MarketRegime
     funnel: dict[str, int]
     top_10: list[ScreenCandidate]

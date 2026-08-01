@@ -27,6 +27,7 @@ class Settings(BaseSettings):
         default=False,
         validation_alias="LMIO_ALLOW_INSECURE_LOCAL_READS",
     )
+    enable_demo_mode: bool = Field(default=False, validation_alias="LMIO_ENABLE_DEMO_MODE")
     default_language: Literal["zh-CN"] = Field(
         default="zh-CN",
         validation_alias=AliasChoices("LMIO_DEFAULT_LANGUAGE", "DEFAULT_LANGUAGE"),
@@ -120,6 +121,7 @@ class Settings(BaseSettings):
             "insecure_local_reads_enabled": (
                 self.environment == "local" and self.allow_insecure_local_reads
             ),
+            "demo_mode_enabled": self.enable_demo_mode,
             "default_language": self.default_language,
             "market": self.market,
             "can_trade": self.can_trade,

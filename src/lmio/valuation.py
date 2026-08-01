@@ -263,6 +263,7 @@ def run_valuation(data: ValuationInput) -> ValuationResult:
 
     return ValuationResult(
         symbol=data.symbol,
+        provenance=data.provenance,
         strict_fcf=strict,
         normalised_owner_earnings=normalised,
         multi_model_fair_value=multi,

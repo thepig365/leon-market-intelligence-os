@@ -9,7 +9,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 7
 MIGRATION = """
 CREATE TABLE IF NOT EXISTS schema_versions (
     version INTEGER PRIMARY KEY,
@@ -48,6 +48,13 @@ CREATE TABLE IF NOT EXISTS news_events (
 CREATE TABLE IF NOT EXISTS reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     report_type TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS synthetic_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_type TEXT NOT NULL,
+    provenance TEXT NOT NULL,
     payload TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -378,6 +385,24 @@ class RuntimeStore:
                 """
             )
             connection.execute(
+                """
+                INSERT OR IGNORE INTO schema_versions(version)
+                SELECT 5
+                WHERE EXISTS (
+                    SELECT 1 FROM schema_versions WHERE version = 4
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO schema_versions(version)
+                SELECT 6
+                WHERE EXISTS (
+                    SELECT 1 FROM schema_versions WHERE version = 5
+                )
+                """
+            )
+            connection.execute(
                 "INSERT OR IGNORE INTO schema_versions(version) VALUES (?)",
                 (SCHEMA_VERSION,),
             )
@@ -451,6 +476,7 @@ class RuntimeStore:
             "strategy_performance",
             "watchlists",
             "watchlist_members",
+            "synthetic_records",
         }
         if table not in allowed:
             raise ValueError(f"unsupported append table: {table}")
@@ -515,6 +541,7 @@ class RuntimeStore:
             "strategy_performance",
             "watchlists",
             "watchlist_members",
+            "synthetic_records",
         }
         if table not in allowed:
             raise ValueError(f"unsupported history table: {table}")
@@ -556,6 +583,7 @@ class RuntimeStore:
             "strategy_performance",
             "watchlists",
             "watchlist_members",
+            "synthetic_records",
         )
         with self.connection() as connection:
             return {

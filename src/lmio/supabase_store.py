@@ -143,6 +143,18 @@ class SupabaseRuntimeStore:
         return payload
 
     def append_json(self, table: str, columns: dict[str, Any]) -> int:
+        if table == "synthetic_records":
+            response = self._request(
+                "POST",
+                "lmio_synthetic_records",
+                json={
+                    "record_type": columns["record_type"],
+                    "provenance": str(columns["provenance"]),
+                    "payload": columns.get("payload", {}),
+                },
+                headers={"Prefer": "return=representation"},
+            )
+            return int(response.json()[0]["id"])
         if table not in RECORD_KINDS:
             raise ValueError(f"unsupported append table: {table}")
         response = self._request(
@@ -206,6 +218,18 @@ class SupabaseRuntimeStore:
         return rows[0] if rows else None
 
     def history_json(self, table: str, limit: int = 50) -> list[dict[str, Any]]:
+        if table == "synthetic_records":
+            bounded_limit = max(1, min(limit, 200))
+            response = self._request(
+                "GET",
+                "lmio_synthetic_records",
+                params={
+                    "select": "id,record_type,provenance,payload,created_at",
+                    "order": "id.desc",
+                    "limit": str(bounded_limit),
+                },
+            )
+            return list(response.json())
         if table not in RECORD_KINDS:
             raise ValueError(f"unsupported history table: {table}")
         bounded_limit = max(1, min(limit, 200))

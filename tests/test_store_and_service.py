@@ -2,15 +2,25 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from lmio.config import Settings
-from lmio.domain import NewsEvent, SecuritySnapshot
+from lmio.demo import demo_universe
+from lmio.domain import DataProvenance, NewsEvent, SecuritySnapshot
 from lmio.news import event_fingerprint
 from lmio.providers.official_rss import OfficialFeed, OfficialRSSProvider
 from lmio.providers.sec import SECProvider
 from lmio.service import MAX_OPERATIONAL_CANDIDATES, LMIOService
 
 
-def test_daily_run_is_append_only_and_reproducible(tmp_path: Path) -> None:
+def authorised_snapshots() -> list[SecuritySnapshot]:
+    return [
+        item.model_copy(update={"provenance": DataProvenance.HISTORICAL_AUTHORISED})
+        for item in demo_universe()
+    ]
+
+
+def test_synthetic_daily_run_is_isolated_and_reproducible(tmp_path: Path) -> None:
     service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
 
     first = service.run_demo_daily()
@@ -18,20 +28,33 @@ def test_daily_run_is_append_only_and_reproducible(tmp_path: Path) -> None:
     counts = service.store.counts()
 
     assert first["top_10"] == second["top_10"]
-    assert len(first["decision_cards"]) == 1
-    assert first["decision_cards"][0]["symbol"] == "META"
-    assert first["decision_cards"][0]["strict_fcf_value"] is not None
-    assert first["decision_cards"][0]["owner_earnings_value"] is not None
-    assert first["decision_cards"][0]["multi_model_value"] is not None
-    assert counts["universe_runs"] == 2
-    assert counts["screen_runs"] == 2
-    assert counts["reports"] == 2
-    assert counts["provider_snapshots"] == 7
-    assert counts["symbols"] == 7
-    assert counts["candidate_transitions"] >= 2
-    history = service.store.history_json("reports")
+    assert first["provenance"] == "synthetic_replay"
+    assert counts["universe_runs"] == 0
+    assert counts["screen_runs"] == 0
+    assert counts["reports"] == 0
+    assert counts["provider_snapshots"] == 0
+    assert counts["symbols"] == 0
+    assert counts["candidate_transitions"] == 0
+    assert counts["synthetic_records"] == 2
+    history = service.store.history_json("synthetic_records")
     assert len(history) == 2
-    assert history[0]["payload"]["data_mode"] == "synthetic_replay"
+    assert history[0]["payload"]["report"]["data_mode"] == "synthetic_replay"
+    assert service.store.latest_json("reports") is None
+    assert service.store.latest_json("screen_runs") is None
+
+
+def test_daily_run_rejects_mixed_provenance(tmp_path: Path) -> None:
+    service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
+    snapshots = authorised_snapshots()
+    snapshots[0] = snapshots[0].model_copy(
+        update={"provenance": DataProvenance.SYNTHETIC_REPLAY}
+    )
+
+    with pytest.raises(ValueError, match="cannot mix provenance"):
+        service.run_daily(snapshots, data_mode="invalid_mixed_input")
+
+    assert service.store.counts()["universe_runs"] == 0
+    assert service.store.counts()["synthetic_records"] == 0
 
 
 def test_meta_valuation_is_versioned(tmp_path: Path) -> None:
@@ -40,40 +63,39 @@ def test_meta_valuation_is_versioned(tmp_path: Path) -> None:
     result = service.run_meta_acceptance()
 
     assert result["symbol"] == "META"
-    assert service.store.counts()["valuation_runs"] == 1
+    assert result["provenance"] == "synthetic_replay"
+    assert service.store.counts()["valuation_runs"] == 0
+    assert service.store.counts()["synthetic_records"] == 1
     assert service.store.counts()["research_packs"] == 0
     assert service.store.counts()["conditional_plans"] == 0
 
 
 def test_authorised_snapshot_never_reuses_synthetic_market_regime(tmp_path: Path) -> None:
     service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
-    snapshots = service.run_demo_daily()
-    source_items = service.store.latest_json("universe_runs")
-    assert source_items is not None
+    synthetic = service.run_demo_daily()
 
     report = service.run_daily(
-        [SecuritySnapshot.model_validate(item) for item in source_items],
+        authorised_snapshots(),
         data_mode="finviz_elite_csv",
     )
 
     assert report["regime"]["label"] == "Unverified"
+    assert report["provenance"] == "historical_authorised"
     assert report["regime"]["confidence"] == 0
     assert report["regime"]["manual_review_required"] is True
     assert report["warnings"] == [
         "当前使用授权导出快照，不是持续实时数据流；市场状态与估值仍需独立验证。"
     ]
     assert "SPY +0.70%" not in str(report)
-    assert snapshots["regime"]["label"] == "Risk-On"
+    assert synthetic["regime"]["label"] == "Risk-On"
+    assert service.store.counts()["reports"] == 1
+    assert service.store.counts()["synthetic_records"] == 1
 
 
 def test_authorised_refresh_persists_only_screen_candidates(tmp_path: Path) -> None:
     service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
-    service.run_demo_daily()
-    source_items = service.store.latest_json("universe_runs")
-    assert source_items is not None
-
     service.run_daily(
-        [SecuritySnapshot.model_validate(item) for item in source_items],
+        authorised_snapshots(),
         data_mode="finviz_elite_api",
     )
 
@@ -91,14 +113,13 @@ def test_authorised_refresh_persists_only_screen_candidates(tmp_path: Path) -> N
 
 def test_latest_candidates_produce_versioned_research_packs(tmp_path: Path) -> None:
     service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
-    service.run_demo_daily()
+    service.run_daily(authorised_snapshots(), data_mode="authorised_fixture")
 
     packs = service.research_latest(limit=3)
 
     assert len(packs) == 3
     assert service.store.counts()["research_packs"] == 3
-    meta = next(pack for pack in packs if pack["symbol"] == "META")
-    assert "Multi-model base" in str(meta["valuation_summary"])
+    assert {pack["model_version"] for pack in packs} == {"deterministic-research-pack-v2"}
 
 
 def test_master_spec_minimum_tables_exist(tmp_path: Path) -> None:

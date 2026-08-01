@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from lmio.domain import (
     DailyReport,
+    DataProvenance,
     DecisionCard,
     MarketRegime,
     ScreenCandidate,
@@ -154,6 +155,7 @@ def build_daily_report(
     *,
     data_mode: str,
     valuations: dict[str, ValuationResult] | None = None,
+    provenance: DataProvenance = DataProvenance.TEST_FIXTURE,
 ) -> DailyReport:
     valuation_map = valuations or {}
     ranked = [
@@ -230,6 +232,7 @@ def build_daily_report(
     return DailyReport(
         generated_at=datetime.now(UTC),
         data_mode=data_mode,
+        provenance=provenance,
         regime=regime,
         funnel={
             "universe_checked": universe_checked,

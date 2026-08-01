@@ -18,6 +18,7 @@ def test_health_reports_hard_safety_state() -> None:
         "paper_trading_enabled": False,
         "store_backend": "sqlite",
         "insecure_local_reads_enabled": False,
+        "demo_mode_enabled": False,
     }
 
 

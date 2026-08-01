@@ -11,7 +11,7 @@ def test_supabase_store_uses_service_role_and_expands_records() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         if request.url.path.endswith("/lmio_schema_versions"):
-            return httpx.Response(200, json=[{"version": 6}])
+            return httpx.Response(200, json=[{"version": 7}])
         if request.url.path.endswith("/lmio_records") and request.method == "POST":
             return httpx.Response(201, json=[{"id": 41}])
         if request.url.path.endswith("/lmio_records"):
@@ -39,7 +39,7 @@ def test_supabase_store_uses_service_role_and_expands_records() -> None:
         transport=httpx.MockTransport(handler),
     )
 
-    assert store.schema_versions() == [6]
+    assert store.schema_versions() == [7]
     assert (
         store.append_json(
             "screen_runs",
@@ -55,6 +55,48 @@ def test_supabase_store_uses_service_role_and_expands_records() -> None:
     assert store.history_json("screen_runs")[0]["calculation_version"] == "screens-v1"
     assert all(request.headers["apikey"] == "service-secret" for request in requests)
     assert all(request.headers["authorization"] == "Bearer service-secret" for request in requests)
+
+
+def test_supabase_synthetic_records_use_a_physically_separate_table() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.url.path.endswith("/lmio_synthetic_records")
+        if request.method == "POST":
+            return httpx.Response(201, json=[{"id": 9}])
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "id": 9,
+                    "record_type": "daily_run",
+                    "provenance": "synthetic_replay",
+                    "payload": {"watermark": "demo"},
+                    "created_at": "2026-08-02T00:00:00Z",
+                }
+            ],
+        )
+
+    store = SupabaseRuntimeStore(
+        "https://example.supabase.co",
+        "service-secret",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert (
+        store.append_json(
+            "synthetic_records",
+            {
+                "record_type": "daily_run",
+                "provenance": "synthetic_replay",
+                "payload": {"watermark": "demo"},
+            },
+        )
+        == 9
+    )
+    assert store.history_json("synthetic_records")[0]["provenance"] == "synthetic_replay"
+    assert all("lmio_records" not in request.url.path for request in requests)
 
 
 def test_supabase_telegram_count_uses_exact_server_count() -> None:

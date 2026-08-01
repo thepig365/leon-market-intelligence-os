@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from lmio.config import Settings
+from lmio.domain import DataProvenance
 from lmio.providers.base import ProviderState
 from lmio.providers.finviz_api import FINVIZ_EXPORT_URL, FinvizAPIProvider
 from lmio.service import LMIOService
@@ -42,6 +43,7 @@ def test_finviz_api_fetches_authorised_csv_without_exposing_token() -> None:
     items = provider.snapshots()
 
     assert [item.symbol for item in items] == ["TEST"]
+    assert items[0].provenance is DataProvenance.LIVE_AUTHORISED
     assert calls[0][0] == FINVIZ_EXPORT_URL
     assert calls[0][1]["auth"] == "private-token"
     assert provider.health().state is ProviderState.READY

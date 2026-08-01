@@ -7,7 +7,7 @@ from time import sleep
 
 import httpx
 
-from lmio.domain import SecuritySnapshot
+from lmio.domain import DataProvenance, SecuritySnapshot
 from lmio.providers.base import ProviderHealth, ProviderState
 from lmio.providers.contracts import MarketDataProvider
 from lmio.providers.csv_snapshot import MAX_CSV_BYTES
@@ -106,6 +106,7 @@ class FinvizAPIProvider(MarketDataProvider):
         snapshots = parser.parse(
             raw.decode("utf-8-sig"),
             observed_at=datetime.now(UTC),
+            provenance=DataProvenance.LIVE_AUTHORISED,
         )
         self._health = ProviderHealth(
             provider=self.name,

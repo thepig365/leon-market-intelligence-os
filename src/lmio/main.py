@@ -352,6 +352,8 @@ def manual_official_news_refresh() -> dict[str, object]:
 
 @app.post("/api/v1/demo/run", tags=["research"], dependencies=[Depends(require_admin)])
 def run_demo() -> dict[str, object]:
+    if not get_settings().enable_demo_mode:
+        raise HTTPException(status_code=404, detail="Synthetic replay is disabled.")
     audit_event("synthetic_daily_run_started")
     return get_service().run_demo_daily()
 
@@ -362,7 +364,7 @@ def latest_report() -> dict[str, Any]:
     if report is None:
         raise HTTPException(
             status_code=404,
-            detail="No report exists. Run the synthetic replay first.",
+            detail="No operational report exists.",
         )
     return report
 

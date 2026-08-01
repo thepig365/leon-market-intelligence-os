@@ -171,6 +171,30 @@ def test_mutating_api_is_closed_without_admin_key() -> None:
     assert news_analysis.status_code == 503
 
 
+def test_synthetic_replay_is_disabled_even_for_admin_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        admin_api_key="admin-secret",
+        read_api_key="read-secret",
+    )
+    monkeypatch.setattr("lmio.main.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.security.get_settings", lambda: settings)
+
+    response = request(
+        "POST",
+        "/api/v1/demo/run",
+        headers={
+            "x-lmio-key": "admin-secret",
+            "x-lmio-read-key": "read-secret",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Synthetic replay is disabled."
+
+
 def test_scheduled_finviz_refresh_requires_cron_secret(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
