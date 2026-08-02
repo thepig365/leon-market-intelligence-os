@@ -1,4 +1,4 @@
-import { headers } from "next/headers";
+import { getVercelOidcToken } from "@vercel/oidc";
 
 export type LMIOResult =
   | { state: "ready"; data: unknown; checkedAt: string }
@@ -9,9 +9,25 @@ function apiBaseUrl(): string {
   return (process.env.LMIO_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 }
 
+function logRuntimeFailure(context: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : "unknown error";
+  if (!message.startsWith("Dynamic server usage:")) {
+    console.error(context, message);
+  }
+}
+
 async function runtimeHeaders(): Promise<HeadersInit> {
   const key = process.env.LMIO_READ_API_KEY?.trim();
-  const oidcToken = (await headers()).get("x-vercel-oidc-token");
+  let oidcToken = "";
+  if (process.env.VERCEL) {
+    try {
+      oidcToken = await getVercelOidcToken();
+    } catch (error) {
+      logRuntimeFailure("LMIO OIDC token retrieval failed", error);
+      // The runtime read credential remains mandatory. Missing OIDC evidence
+      // must fail closed at deployment protection instead of exposing data.
+    }
+  }
   return {
     Accept: "application/json",
     ...(key ? { "x-lmio-read-key": key } : {}),
@@ -33,7 +49,7 @@ export async function readLMIO(endpoint: string | null): Promise<LMIOResult> {
     const response = await fetch(`${apiBaseUrl()}${endpoint}`, {
       cache: "no-store",
       headers: await runtimeHeaders(),
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(20_000),
     });
     if (response.status === 404) {
       return {
@@ -43,6 +59,7 @@ export async function readLMIO(endpoint: string | null): Promise<LMIOResult> {
       };
     }
     if (!response.ok) {
+      console.error("LMIO runtime request returned a non-success status", response.status);
       return {
         state: "unavailable",
         message: `LMIO API 返回 ${response.status}；已安全降级。`,
@@ -50,7 +67,8 @@ export async function readLMIO(endpoint: string | null): Promise<LMIOResult> {
       };
     }
     return { state: "ready", data: await response.json(), checkedAt };
-  } catch {
+  } catch (error) {
+    logRuntimeFailure("LMIO runtime request failed", error);
     return {
       state: "unavailable",
       message: "LMIO API 当前不可访问。没有数据被替代或虚构。",

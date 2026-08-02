@@ -116,6 +116,12 @@ for (const claim of ["private_beta_access", 'app.status !== "active"', "owner", 
 if (!runtime.includes('"x-lmio-read-key": key')) {
   throw new Error("Dashboard must authenticate server-to-server runtime reads.");
 }
+if (
+  !runtime.includes("getVercelOidcToken") ||
+  !runtime.includes('"x-vercel-trusted-oidc-idp-token": oidcToken')
+) {
+  throw new Error("Protected runtime reads must use Vercel short-lived OIDC trust.");
+}
 if (!googleSignIn.includes('provider: "google"') || !googleSignIn.includes("/auth/callback")) {
   throw new Error("Dashboard must offer Google login through the protected auth callback.");
 }

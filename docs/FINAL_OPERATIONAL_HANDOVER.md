@@ -29,9 +29,12 @@ Release label: **LMIO v1.0 RC1 — Ready for Operator Acceptance**
 ## Protected review deployment
 
 - dashboard preview reached `READY` at
-  `https://lmio-dashboard-review-7ayrfq4j4-leons-projects-1ac79fbd.vercel.app`;
+  `https://lmio-dashboard-review-thepig365-leons-projects-1ac79fbd.vercel.app`;
 - the protected sign-in response and search-exclusion metadata were verified;
-- signed-in desktop and mobile operator acceptance remains outstanding;
+- a signed-in desktop browser loaded the complete `/acceptance` evidence from
+  the protected runtime through server-to-server OIDC trust;
+- mobile verification and Leon's substantive operator decisions remain
+  outstanding;
 - no production deployment was performed.
 
 ## Current conclusion
