@@ -23,6 +23,7 @@ def main() -> None:
             "import-csv",
             "import-finviz",
             "meta-acceptance",
+            "operational-daily",
             "refresh-sec",
             "refresh-news",
             "research-latest",
@@ -107,6 +108,8 @@ def main() -> None:
         payload = service.research_latest()
     elif args.command == "meta-acceptance":
         payload = service.run_meta_acceptance()
+    elif args.command == "operational-daily":
+        payload = service.run_operational_pipeline()
     else:
         payload = {
             "counts": service.store.counts(),

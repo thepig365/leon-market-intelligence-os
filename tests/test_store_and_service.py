@@ -159,8 +159,6 @@ def test_master_spec_minimum_tables_exist(tmp_path: Path) -> None:
         "signal_scores",
         "trade_plans",
         "trade_plan_transitions",
-        "paper_trades",
-        "paper_trade_events",
         "telegram_deliveries",
         "reports",
         "strategy_performance",

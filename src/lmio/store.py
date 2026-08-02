@@ -9,7 +9,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 MIGRATION = """
 CREATE TABLE IF NOT EXISTS schema_versions (
     version INTEGER PRIMARY KEY,
@@ -64,6 +64,24 @@ CREATE TABLE IF NOT EXISTS top3_evaluations (
     state TEXT NOT NULL,
     payload TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS pipeline_stages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    stage_order INTEGER NOT NULL,
+    stage_name TEXT NOT NULL,
+    status TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(run_id, stage_order),
+    FOREIGN KEY (run_id) REFERENCES pipeline_runs(run_id)
 );
 CREATE TABLE IF NOT EXISTS signal_outcomes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -329,16 +347,6 @@ CREATE TABLE IF NOT EXISTS trade_plans (
     observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE TABLE IF NOT EXISTS paper_trades (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
-    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE IF NOT EXISTS paper_trade_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, source TEXT, source_url TEXT,
-    observed_at TEXT, schema_version TEXT, payload TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
 CREATE TABLE IF NOT EXISTS ingestion_dedup (
     fingerprint TEXT PRIMARY KEY,
     record_type TEXT NOT NULL,
@@ -415,6 +423,15 @@ class RuntimeStore:
                 SELECT 7
                 WHERE EXISTS (
                     SELECT 1 FROM schema_versions WHERE version = 6
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO schema_versions(version)
+                SELECT 8
+                WHERE EXISTS (
+                    SELECT 1 FROM schema_versions WHERE version = 7
                 )
                 """
             )
@@ -518,6 +535,8 @@ class RuntimeStore:
             "watchlist_members",
             "synthetic_records",
             "top3_evaluations",
+            "pipeline_runs",
+            "pipeline_stages",
         }
         if table not in allowed:
             raise ValueError(f"unsupported append table: {table}")
@@ -585,6 +604,8 @@ class RuntimeStore:
             "watchlist_members",
             "synthetic_records",
             "top3_evaluations",
+            "pipeline_runs",
+            "pipeline_stages",
         }
         if table not in allowed:
             raise ValueError(f"unsupported history table: {table}")
@@ -628,6 +649,8 @@ class RuntimeStore:
             "watchlist_members",
             "synthetic_records",
             "top3_evaluations",
+            "pipeline_runs",
+            "pipeline_stages",
         )
         with self.connection() as connection:
             return {

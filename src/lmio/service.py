@@ -15,6 +15,7 @@ from lmio.domain import (
     ValuationResult,
 )
 from lmio.official_news_monitor import monitor_official_news
+from lmio.pipeline import OperationalPipeline, StageResult, StageStatus
 from lmio.providers.finviz_api import FinvizAPIProvider
 from lmio.providers.official_rss import OfficialRSSProvider
 from lmio.providers.sec import SECProvider
@@ -50,6 +51,239 @@ class LMIOService:
             data_mode="synthetic_replay",
             valuations={valuation.symbol: valuation},
         )
+
+    def run_operational_pipeline(
+        self,
+        *,
+        finviz_provider: FinvizAPIProvider | None = None,
+    ) -> dict[str, object]:
+        """Run the sole production daily pipeline without any trading capability."""
+
+        provider = finviz_provider or FinvizAPIProvider(
+            self.settings.finviz_api_token.get_secret_value()
+        )
+
+        def preflight(context: dict[str, object]) -> StageResult:
+            readiness = self.settings.integration_readiness()
+            context["readiness"] = readiness
+            if not provider.health().configured:
+                return StageResult(
+                    status=StageStatus.FAILED,
+                    error_summary="FinvizNotConfigured",
+                    evidence_references=["settings:integration_readiness:finviz"],
+                )
+            return StageResult(
+                output_count=1,
+                evidence_references=["settings:safety:CAN_TRADE=false"],
+            )
+
+        def market_snapshot(context: dict[str, object]) -> StageResult:
+            snapshots = provider.snapshots()
+            if not snapshots:
+                return StageResult(
+                    status=StageStatus.FAILED,
+                    error_summary="EmptyMarketSnapshot",
+                )
+            context["snapshots"] = snapshots
+            evidence = provider.last_ingestion_evidence or {}
+            self.store.append_json(
+                "provider_health",
+                {
+                    "provider": provider.name,
+                    "state": provider.health().state,
+                    "payload": {"detail": provider.health().detail, "ingestion": evidence},
+                },
+            )
+            return StageResult(
+                output_count=len(snapshots),
+                evidence_references=[str(evidence.get("snapshot_id", "finviz:no-snapshot-id"))],
+            )
+
+        def official_refresh(context: dict[str, object]) -> StageResult:
+            result = self.refresh_official_news()
+            context["official_refresh"] = result
+            macro = dict(result.get("macro") or {})
+            status = StageStatus.SUCCEEDED
+            if macro.get("status") in {"unavailable", "partial"}:
+                status = StageStatus.PARTIAL
+            return StageResult(
+                status=status,
+                output_count=int(macro.get("stored", 0)),
+                warning_count=int(macro.get("failed_feeds", 0)),
+                evidence_references=["store:provider_health:official_macro"],
+            )
+
+        def sec_refresh(context: dict[str, object]) -> StageResult:
+            result = dict(dict(context.get("official_refresh") or {}).get("sec") or {})
+            state = str(result.get("status", "disabled"))
+            if state == "failed":
+                status = StageStatus.FAILED
+            elif state in {"partial", "unavailable"}:
+                status = StageStatus.PARTIAL
+            elif state == "disabled":
+                status = StageStatus.SKIPPED
+            else:
+                status = StageStatus.SUCCEEDED
+            return StageResult(
+                status=status,
+                output_count=int(result.get("stored", result.get("succeeded", 0))),
+                warning_count=int(result.get("failed", 0)),
+                error_summary=None if state not in {"failed", "unavailable"} else state,
+                evidence_references=["store:provider_health:sec_edgar"],
+            )
+
+        def universe(context: dict[str, object]) -> StageResult:
+            snapshots = list(context.get("snapshots") or [])
+            investable = build_investable_universe(snapshots, UniversePolicy())
+            context["investable"] = investable
+            return StageResult(output_count=len(investable))
+
+        def screens(context: dict[str, object]) -> StageResult:
+            candidates = run_core_screens(list(context.get("investable") or []))
+            context["candidates"] = candidates
+            return StageResult(output_count=len(candidates))
+
+        def pattern(context: dict[str, object]) -> StageResult:
+            candidates = list(context.get("candidates") or [])
+            return StageResult(output_count=sum(item.pattern is not None for item in candidates))
+
+        def scoring(context: dict[str, object]) -> StageResult:
+            candidates = list(context.get("candidates") or [])
+            return StageResult(
+                output_count=len(candidates),
+                evidence_references=["calculation:screens-v1:four-dimension-scores"],
+            )
+
+        def top10(context: dict[str, object]) -> StageResult:
+            top = list(context.get("candidates") or [])[:10]
+            context["top_10"] = top
+            return StageResult(output_count=len(top))
+
+        def valuation_inputs(context: dict[str, object]) -> StageResult:
+            top = list(context.get("top_10") or [])
+            ready = [item for item in top if not item.missing_fields]
+            context["valuation_ready"] = ready
+            return StageResult(
+                status=StageStatus.SUCCEEDED if len(ready) == len(top) else StageStatus.PARTIAL,
+                output_count=len(ready),
+                warning_count=len(top) - len(ready),
+                error_summary=(
+                    None if len(ready) == len(top) else "Missing provider-neutral valuation inputs"
+                ),
+            )
+
+        def valuation_routing(context: dict[str, object]) -> StageResult:
+            ready = list(context.get("valuation_ready") or [])
+            incomplete = bool(context.get("top_10")) and not ready
+            return StageResult(
+                status=StageStatus.PARTIAL if incomplete else StageStatus.SUCCEEDED,
+                output_count=len(ready),
+                warning_count=1 if incomplete else 0,
+                evidence_references=["valuation:provider-neutral-routing"],
+            )
+
+        def top3_and_report(context: dict[str, object]) -> StageResult:
+            snapshots = list(context.get("snapshots") or [])
+            report = self.run_daily(snapshots, data_mode=provider.name)
+            context["report"] = report
+            top3 = dict(report.get("top_3_status") or {})
+            available = bool(top3.get("available"))
+            return StageResult(
+                status=StageStatus.SUCCEEDED if available else StageStatus.PARTIAL,
+                output_count=len(top3.get("evaluations") or []),
+                warning_count=0 if available else 1,
+                error_summary=None if available else str(top3.get("message", "Top 3 unavailable")),
+                evidence_references=["store:top3_evaluations", "store:reports:daily"],
+            )
+
+        def research(context: dict[str, object]) -> StageResult:
+            packs = self.research_latest(limit=10)
+            context["research_packs"] = packs
+            return StageResult(
+                status=StageStatus.SUCCEEDED if packs else StageStatus.PARTIAL,
+                output_count=len(packs),
+                warning_count=0 if packs else 1,
+                evidence_references=["store:research_packs"],
+            )
+
+        def news_price(context: dict[str, object]) -> StageResult:
+            packs = list(context.get("research_packs") or [])
+            confirmed = sum(bool(pack.get("news_price_confirmation")) for pack in packs)
+            return StageResult(
+                status=StageStatus.SUCCEEDED if confirmed == len(packs) else StageStatus.PARTIAL,
+                output_count=confirmed,
+                warning_count=len(packs) - confirmed,
+                evidence_references=["store:research_packs:news_price_confirmation"],
+            )
+
+        def existing_output(context: dict[str, object]) -> StageResult:
+            return StageResult(
+                output_count=len(list(context.get("top_10") or [])),
+                evidence_references=["store:candidate_transitions", "store:conditional_plans"],
+            )
+
+        def daily_brief(context: dict[str, object]) -> StageResult:
+            report = dict(context.get("report") or {})
+            if not report.get("message_zh"):
+                return StageResult(status=StageStatus.FAILED, error_summary="MissingChineseBrief")
+            return StageResult(output_count=1, evidence_references=["store:reports:daily"])
+
+        def telegram(context: dict[str, object]) -> StageResult:
+            report = dict(context.get("report") or {})
+            delivery = queue_or_send(
+                self.store,
+                str(report["message_zh"]),
+                bot_token=self.settings.telegram_bot_token,
+                chat_id=self.settings.telegram_chat_id,
+                kind=MessageKind.PREMARKET,
+            )
+            context["telegram"] = delivery
+            return StageResult(
+                status=(
+                    StageStatus.SUCCEEDED
+                    if delivery in {"sent", "deduplicated"}
+                    else StageStatus.PARTIAL
+                ),
+                output_count=1,
+                warning_count=0 if delivery in {"sent", "deduplicated"} else 1,
+                evidence_references=["store:telegram_deliveries"],
+            )
+
+        def health(_: dict[str, object]) -> StageResult:
+            checks = (
+                self.store.connectivity_check(),
+                self.store.schema_check(),
+                self.store.record_count_check(),
+            )
+            healthy = all(check.get("status") == "ok" for check in checks)
+            return StageResult(
+                status=StageStatus.SUCCEEDED if healthy else StageStatus.PARTIAL,
+                output_count=len(checks),
+                warning_count=0 if healthy else 1,
+                evidence_references=["runtime:connectivity", "runtime:schema", "runtime:counts"],
+            )
+
+        handlers = {
+            1: preflight,
+            2: market_snapshot,
+            3: official_refresh,
+            4: sec_refresh,
+            5: universe,
+            6: screens,
+            7: pattern,
+            8: scoring,
+            9: top10,
+            10: valuation_inputs,
+            11: valuation_routing,
+            12: top3_and_report,
+            13: research,
+            14: news_price,
+            15: existing_output,
+            16: daily_brief,
+            17: telegram,
+            21: health,
+        }
+        return OperationalPipeline(self.store, handlers).run()
 
     def refresh_finviz(
         self,
