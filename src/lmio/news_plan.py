@@ -1,5 +1,6 @@
 """Translate important verified news into conditional research plans."""
 
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -50,6 +51,8 @@ def propose_news_plan(
     price_confirmation: bool,
     evidence_urls: list[str],
     reaction: ReactionEvidence | None = None,
+    market_snapshot_references: list[str] | None = None,
+    run_id: str = "news-analysis",
 ) -> ConditionalPlan | None:
     """Return a research plan only when official evidence and price confirmation exist."""
 
@@ -80,4 +83,7 @@ def propose_news_plan(
         target_reference="Next material resistance; calculation required.",
         risk_reward=2,
         evidence_urls=sorted(set([event.source_url, *evidence_urls])),
+        market_snapshot_references=market_snapshot_references or [],
+        expires_at=datetime.now(UTC) + timedelta(days=1),
+        run_id=run_id,
     )

@@ -189,7 +189,11 @@ class LMIOService:
 
         def top3_and_report(context: dict[str, object]) -> StageResult:
             snapshots = list(context.get("snapshots") or [])
-            report = self.run_daily(snapshots, data_mode=provider.name)
+            report = self.run_daily(
+                snapshots,
+                data_mode=provider.name,
+                run_id=str(context["run_id"]),
+            )
             context["report"] = report
             top3 = dict(report.get("top_3_status") or {})
             available = bool(top3.get("available"))
@@ -658,6 +662,7 @@ class LMIOService:
         data_mode: str,
         valuations: dict[str, ValuationResult] | None = None,
         research_packs: dict[str, ResearchPack] | None = None,
+        run_id: str = "standalone-daily-run",
     ) -> dict[str, object]:
         if not snapshots:
             raise ValueError("A daily run requires at least one snapshot")
@@ -751,6 +756,7 @@ class LMIOService:
                     reason="Deterministic strategy filter completed.",
                     actor="screening-agent",
                     evidence_urls=evidence_urls,
+                    run_id=run_id,
                 )
             ]
             if candidate.state is CandidateState.RESEARCHING:
@@ -763,6 +769,7 @@ class LMIOService:
                         reason="Data confidence requires additional research.",
                         actor="screening-agent",
                         evidence_urls=evidence_urls,
+                        run_id=run_id,
                     )
                 )
             for transition in transitions:

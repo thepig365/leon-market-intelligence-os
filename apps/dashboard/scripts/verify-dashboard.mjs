@@ -35,6 +35,7 @@ const publicAudit = await readFile(
   new URL("../src/app/public-audit/page.tsx", import.meta.url),
   "utf8",
 );
+const home = await readFile(new URL("../src/app/page.tsx", import.meta.url), "utf8");
 
 const expected = [
   "command-centre",
@@ -70,6 +71,12 @@ if (
   !publicAudit.includes("NO TRADING · NO PRIVATE DATA")
 ) {
   throw new Error("Public audit page must document all modules and safety boundaries.");
+}
+if (!home.includes('readLMIO("/api/v1/command-centre")') || !home.includes("syntheticWatermark")) {
+  throw new Error("Home must use the operating command-centre and watermark non-production data.");
+}
+if (!publicAudit.includes("fixture-tested") || publicAudit.includes("implemented inside the private console")) {
+  throw new Error("Public audit status must separate implementation from live verification.");
 }
 for (const forbidden of ["LMIO_READ_KEY", "SUPABASE_SERVICE_ROLE_KEY", "FINVIZ_API_TOKEN"]) {
   if (publicAudit.includes(forbidden)) {

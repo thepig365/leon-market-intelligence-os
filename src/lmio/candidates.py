@@ -34,6 +34,7 @@ def transition_candidate(
     reason: str,
     actor: str,
     evidence_urls: list[str],
+    run_id: str,
 ) -> CandidateTransition:
     if new_state not in ALLOWED_CANDIDATE_TRANSITIONS[previous_state]:
         raise ValueError(f"invalid candidate transition: {previous_state} -> {new_state}")
@@ -47,4 +48,5 @@ def transition_candidate(
         reason=reason,
         actor=actor,
         evidence_urls=evidence_urls,
+        run_id=run_id,
     )

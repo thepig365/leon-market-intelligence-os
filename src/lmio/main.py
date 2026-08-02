@@ -1,5 +1,6 @@
 """LMIO FastAPI application and local read-only command centre."""
 
+from datetime import UTC, datetime
 from functools import lru_cache
 from html import escape
 from typing import Annotated, Any
@@ -14,7 +15,8 @@ from lmio.config import get_settings
 from lmio.domain import NewsEvent
 from lmio.health_console import build_system_health
 from lmio.news import news_impact_score
-from lmio.news_plan import ReactionEvidence, propose_news_plan
+from lmio.news_plan import propose_news_plan
+from lmio.news_price import ConfirmationState, NewsPriceConfirmation
 from lmio.plans import ConditionalPlan, PlanState, transition_with_evidence
 from lmio.roles import Principal
 from lmio.security import (
@@ -27,7 +29,7 @@ from lmio.security import (
 from lmio.service import LMIOService
 from lmio.telegram import (
     MessageKind,
-    format_symbol_snapshot,
+    format_symbol_research,
     parse_symbol_query,
     queue_or_send,
 )
@@ -204,11 +206,47 @@ async def telegram_webhook(request: Request) -> dict[str, str]:
             except RuntimeError:
                 response = f"{symbol} 的 Finviz 查询暂时失败。旧数据未被修改，请稍后重试。"
             else:
-                response = (
-                    format_symbol_snapshot(snapshot)
-                    if snapshot is not None
-                    else f"Finviz 当前没有返回 {symbol} 的可验证数据。"
-                )
+                if snapshot is None:
+                    response = f"Finviz 当前没有返回 {symbol} 的可验证数据。"
+                elif not hasattr(get_service().store, "latest_json"):
+                    response = format_symbol_research(snapshot)
+                else:
+                    report = get_service().store.latest_json("reports") or {}
+                    ranked = list(report.get("top_10") or [])
+                    candidate = next(
+                        (
+                            dict(item, rank=index)
+                            for index, item in enumerate(ranked, 1)
+                            if item.get("symbol") == symbol
+                        ),
+                        None,
+                    )
+                    valuations = get_service().store.history_json("valuation_runs", 200)
+                    valuation = next(
+                        (
+                            item.get("result_payload")
+                            for item in valuations
+                            if item.get("symbol") == symbol
+                        ),
+                        None,
+                    )
+                    confirmations = get_service().store.history_json(
+                        "news_price_confirmations", 200
+                    )
+                    latest_news = next(
+                        (
+                            item.get("payload")
+                            for item in confirmations
+                            if symbol in item.get("payload", {}).get("affected_symbols", [])
+                        ),
+                        None,
+                    )
+                    response = format_symbol_research(
+                        snapshot,
+                        candidate=candidate,
+                        valuation=valuation,
+                        latest_news=latest_news,
+                    )
 
     delivery = queue_or_send(
         get_service().store,
@@ -754,7 +792,6 @@ def check_news() -> dict[str, Any]:
 
 class NewsAnalysisInput(BaseModel):
     evidence_urls: list[str] = Field(default_factory=list, max_length=20)
-    reaction: ReactionEvidence | None = None
 
 
 @app.post(
@@ -768,11 +805,35 @@ def analyse_news_event(event_id: str, payload: NewsAnalysisInput) -> dict[str, A
         raise HTTPException(status_code=404, detail="News event not found.")
     event = NewsEvent.model_validate(stored)
     impact = news_impact_score(event)
+    confirmation_record = next(
+        (
+            item
+            for item in get_service().store.history_json("news_price_confirmations", 200)
+            if item.get("payload", {}).get("source_url") == event.source_url
+        ),
+        None,
+    )
+    confirmation = (
+        NewsPriceConfirmation.model_validate(confirmation_record["payload"])
+        if confirmation_record is not None
+        else None
+    )
+    reaction_confirmed = bool(
+        confirmation is not None
+        and confirmation.confirmation_state is ConfirmationState.CONFIRMED
+        and not confirmation.missing_evidence
+    )
+    snapshot_references = (
+        [f"news_price_confirmations:{confirmation_record['id']}"]
+        if reaction_confirmed and confirmation_record is not None
+        else []
+    )
     plan = propose_news_plan(
         event,
-        price_confirmation=False,
+        price_confirmation=reaction_confirmed,
         evidence_urls=payload.evidence_urls,
-        reaction=payload.reaction,
+        market_snapshot_references=snapshot_references,
+        run_id=f"news-analysis:{event_id}:{datetime.now(UTC).isoformat()}",
     )
     plan_payload = plan.model_dump(mode="json") if plan is not None else None
     plan_id = None
@@ -796,7 +857,7 @@ def analyse_news_event(event_id: str, payload: NewsAnalysisInput) -> dict[str, A
         "event_id": event_id,
         "impact_score": impact,
         "priority": "P0" if impact >= 85 else "P1" if impact >= 70 else "watch",
-        "reaction_confirmed": payload.reaction.confirmed if payload.reaction else False,
+        "reaction_confirmed": reaction_confirmed,
         "conditional_plan_id": plan_id,
         "conditional_plan": plan_payload,
         "order_created": False,
@@ -851,6 +912,18 @@ def create_trade_plan(
             status_code=422,
             detail="A stored market snapshot reference is required.",
         )
+    if plan.expires_at <= datetime.now(UTC):
+        raise HTTPException(status_code=422, detail="Plan expiry must be in the future.")
+    available_references = {
+        f"provider_snapshots:{item['id']}"
+        for item in get_service().store.history_json("provider_snapshots", 200)
+    } | {
+        f"news_price_confirmations:{item['id']}"
+        for item in get_service().store.history_json("news_price_confirmations", 200)
+    }
+    missing_references = set(plan.market_snapshot_references) - available_references
+    if missing_references:
+        raise HTTPException(status_code=422, detail="Stored snapshot reference was not found.")
     plan = plan.model_copy(update={"created_by": principal.actor_id})
     payload = plan.model_dump(mode="json")
     record_id = get_service().store.append_json(

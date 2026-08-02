@@ -12,6 +12,9 @@ def test_every_company_type_has_an_explicit_route(company_type: CompanyType) -> 
         assert route.warning is None
     else:
         assert "must not be used" in str(route.warning)
+        assert route.not_applicable_reason
+        assert route.required_alternative_method
+        assert route.missing_evidence
 
 
 def test_bank_and_reit_do_not_route_to_generic_dcf() -> None:
@@ -32,6 +35,9 @@ def test_bank_and_reit_do_not_route_to_generic_dcf() -> None:
         ("REIT", CompanyType.REIT, False),
         ("unprofitable technology", CompanyType.UNPROFITABLE, False),
         ("cyclical", CompanyType.CYCLICAL, False),
+        ("resource producer", CompanyType.RESOURCE, False),
+        ("mature dividend payer", CompanyType.MATURE_DIVIDEND, False),
+        ("special situation", CompanyType.SPECIAL_SITUATION, False),
     ],
 )
 def test_required_valuation_acceptance_routes(

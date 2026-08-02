@@ -9,7 +9,7 @@ from lmio.config import Settings
 from lmio.domain import NewsEvent, SecuritySnapshot
 from lmio.main import DASHBOARD_PAGES, NewsAnalysisInput, analyse_news_event, app
 from lmio.news import event_fingerprint
-from lmio.news_plan import ReactionEvidence
+from lmio.news_price import ConfirmationState, NewsPriceConfirmation, PriceWindow
 from lmio.service import LMIOService
 
 
@@ -470,22 +470,54 @@ def test_news_analysis_creates_only_a_conditional_draft(
     )
     fingerprint = event_fingerprint(event)
     service.store.put_news_event(fingerprint, event.model_dump(mode="json"))
+    observed = datetime(2026, 7, 30, 15, 0, tzinfo=UTC)
+    confirmation = NewsPriceConfirmation(
+        original_source=event.source,
+        source_url=event.source_url,
+        publication_time=event.published_at,
+        ingestion_time=observed,
+        event_type=event.event_type,
+        affected_symbols=event.symbols,
+        significance=event.significance,
+        source_quality=event.source_tier,
+        event_specific_explanation="Official guidance increased.",
+        expected_transmission_mechanism="Higher expected earnings.",
+        pre_event_price=100,
+        post_event_price_windows=[
+            PriceWindow(
+                observed_at=observed,
+                price=103,
+                benchmark_price=100,
+                relative_volume=1.5,
+                vwap=101,
+                opening_range_high=102,
+                opening_range_low=99,
+            )
+        ],
+        abnormal_return_vs_benchmark=0.03,
+        relative_volume=1.5,
+        vwap_position="above",
+        opening_range_behaviour="breakout_above",
+        gap_retention="positive",
+        confirmation_state=ConfirmationState.CONFIRMED,
+        invalidation_state="active",
+        next_review_time=None,
+    )
+    service.store.append_json(
+        "news_price_confirmations",
+        {"symbol": "TEST", "state": "confirmed", "payload": confirmation.model_dump(mode="json")},
+    )
     monkeypatch.setattr("lmio.main.get_service", lambda: service)
 
     result = analyse_news_event(
         fingerprint,
-        NewsAnalysisInput(
-            reaction=ReactionEvidence(
-                window_minutes=30,
-                stock_return_pct=2,
-                benchmark_return_pct=0,
-                relative_volume=1.5,
-                vwap_confirmed=True,
-                opening_range_confirmed=True,
-            )
-        ),
+        NewsAnalysisInput(),
     )
 
     assert result["conditional_plan"]["state"] == "draft"
     assert result["order_created"] is False
     assert service.store.counts()["conditional_plans"] == 1
+
+
+def test_news_analysis_does_not_accept_client_price_reaction() -> None:
+    assert "reaction" not in NewsAnalysisInput.model_fields

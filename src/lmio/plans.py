@@ -48,7 +48,8 @@ class ConditionalPlan(BaseModel):
     risk_reward: float = Field(gt=0)
     evidence_urls: list[str]
     market_snapshot_references: list[str] = Field(default_factory=list)
-    expires_at: datetime | None = None
+    expires_at: datetime
+    run_id: str
     created_by: str = "lmio-system"
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     version: str = "conditional-plan-v1"
@@ -63,6 +64,7 @@ class PlanTransition(BaseModel):
     actor: str
     reason: str
     evidence_urls: list[str]
+    run_id: str
     occurred_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -86,6 +88,7 @@ def transition_with_evidence(
         actor=actor,
         reason=reason,
         evidence_urls=evidence_urls,
+        run_id=plan.run_id,
     )
     return updated, event
 

@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from lmio.plans import (
@@ -19,6 +21,9 @@ def plan() -> ConditionalPlan:
         target_reference="Prior resistance reference",
         risk_reward=2,
         evidence_urls=["https://www.sec.gov/example"],
+        market_snapshot_references=["provider_snapshots:1"],
+        expires_at=datetime.now(UTC) + timedelta(days=1),
+        run_id="test-run-1",
     )
 
 
@@ -43,6 +48,7 @@ def test_transition_records_actor_reason_and_evidence() -> None:
     assert updated.state is PlanState.WAITING_CONFIRMATION
     assert event.previous_state is PlanState.DRAFT
     assert event.actor == "research-agent"
+    assert event.run_id == "test-run-1"
 
 
 def test_terminal_plan_cannot_restart() -> None:

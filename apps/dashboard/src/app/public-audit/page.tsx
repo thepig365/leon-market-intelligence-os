@@ -26,6 +26,12 @@ const auditFacts = [
   ["Private data", "Not exposed by this public audit view"],
 ];
 
+function auditStatus(deferred: boolean) {
+  return deferred
+    ? "Status: deliberately deferred; no fabricated data"
+    : "Status: code implemented and fixture-tested; live operational verification is recorded separately";
+}
+
 export default function PublicAuditPage() {
   return (
     <main className="publicAudit">
@@ -73,9 +79,7 @@ export default function PublicAuditPage() {
               <p className="publicAuditEnglish">{section.eyebrow}</p>
               <p>{section.description}</p>
               <p className="publicAuditStatus">
-                {section.deferred
-                  ? "Status: deliberately deferred; no fabricated data"
-                  : "Status: implemented inside the private console"}
+                {auditStatus(Boolean(section.deferred))}
               </p>
             </article>
           ))}

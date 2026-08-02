@@ -4,8 +4,13 @@ import { readLMIO } from "@/lib/lmio";
 import { dashboardSections, sectionBySlug } from "@/lib/navigation";
 
 export default async function Home() {
-  const report = await readLMIO("/api/v1/reports/latest");
+  const command = await readLMIO("/api/v1/command-centre");
   const commandCentre = sectionBySlug("command-centre");
+  const payload = command.state === "ready" && typeof command.data === "object" && command.data
+    ? command.data as Record<string, unknown>
+    : {};
+  const dataMode = typeof payload.data_mode === "string" ? payload.data_mode : "unavailable";
+  const nonOperational = !["authorised_finviz_api", "operational"].includes(dataMode);
 
   return (
     <>
@@ -21,6 +26,11 @@ export default async function Home() {
           <span>不虚构缺失数据</span>
           <span>不执行交易</span>
         </div>
+        {nonOperational ? (
+          <p className="syntheticWatermark" role="status">
+            非生产资料 · {dataMode} · 不得用于投资决定
+          </p>
+        ) : null}
       </section>
 
       <section className="sectionGrid" aria-label="LMIO 功能">
@@ -35,7 +45,7 @@ export default async function Home() {
       </section>
 
       {commandCentre ? (
-        <HumanReadablePanel section={commandCentre} result={report} />
+        <HumanReadablePanel section={commandCentre} result={command} />
       ) : null}
     </>
   );

@@ -225,6 +225,7 @@ class CandidateTransition(BaseModel):
     reason: str
     actor: str
     evidence_urls: list[str] = Field(default_factory=list)
+    run_id: str
     occurred_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

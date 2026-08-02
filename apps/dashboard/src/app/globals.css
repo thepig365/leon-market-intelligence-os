@@ -399,6 +399,16 @@ h1 {
   gap: 10px;
 }
 
+.syntheticWatermark {
+  margin-top: 1.25rem;
+  border: 2px solid #9a3412;
+  background: #fff7ed;
+  color: #7c2d12;
+  padding: 0.8rem 1rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
 .guardrails span,
 .deferredNotice {
   background: var(--accent-soft);

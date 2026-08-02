@@ -166,6 +166,47 @@ def format_symbol_snapshot(snapshot: SecuritySnapshot) -> str:
     )
 
 
+def format_symbol_research(
+    snapshot: SecuritySnapshot,
+    *,
+    candidate: dict[str, object] | None = None,
+    valuation: dict[str, object] | None = None,
+    latest_news: dict[str, object] | None = None,
+) -> str:
+    """Render a decision-support brief without exposing licensed raw rows."""
+
+    base = format_symbol_snapshot(snapshot).splitlines()
+    item = candidate or {}
+    scores = item.get("scores") if isinstance(item.get("scores"), dict) else {}
+    value = valuation or {}
+    news_state = (
+        latest_news.get("confirmation_state", "尚无已确认事件")
+        if latest_news
+        else "尚无已确认事件"
+    )
+    age = datetime.now(UTC) - snapshot.observed_at.astimezone(UTC)
+    stale = age > timedelta(hours=24)
+    score_lines = [
+        f"排名：{item.get('rank', '未进入当前 Top 10')}",
+        (
+            "四维评分：质量 {quality} / 价值 {valuation} / 机会 {opportunity} / 时机 {timing}"
+        ).format(
+            quality=scores.get("quality", "—"),
+            valuation=scores.get("valuation", "—"),
+            opportunity=scores.get("opportunity", "—"),
+            timing=scores.get("timing", "—"),
+        ),
+        f"估值：{value.get('intrinsic_value_range', item.get('intrinsic_value_range', '未完成'))}",
+        f"安全边际：{value.get('safety_margin', '未完成')}",
+        f"新闻确认：{news_state}",
+        f"主要风险：{item.get('risk', item.get('invalidation', '需人工复核'))}",
+        f"下一步：{item.get('next_confirmation', '等待完整证据')}",
+        f"失效条件：{item.get('invalidation', '尚未定义')}",
+        f"新鲜度：{'已过期，不得依赖' if stale else '当前'}",
+    ]
+    return "\n".join([*base[:-1], *score_lines, base[-1]])
+
+
 def queue_or_send(
     store: TelegramStore,
     message: str,

@@ -37,6 +37,7 @@ RECORD_KINDS = {
     "top3_evaluations",
     "pipeline_runs",
     "pipeline_stages",
+    "news_price_confirmations",
 }
 
 LATEST_KINDS = {"universe_runs", "screen_runs", "reports"}
@@ -66,6 +67,7 @@ COUNT_KINDS = (
     "top3_evaluations",
     "pipeline_runs",
     "pipeline_stages",
+    "news_price_confirmations",
 )
 
 

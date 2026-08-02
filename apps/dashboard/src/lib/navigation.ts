@@ -92,7 +92,7 @@ export const dashboardSections: DashboardSection[] = [
     label: "系统健康",
     eyebrow: "SYSTEM HEALTH",
     description: "运行状态、提供商状态、存储计数和安全边界。",
-    endpoint: "/ready",
+    endpoint: "/api/v1/system-health",
   },
   {
     slug: "settings",

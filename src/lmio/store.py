@@ -9,7 +9,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 MIGRATION = """
 CREATE TABLE IF NOT EXISTS schema_versions (
     version INTEGER PRIMARY KEY,
@@ -42,6 +42,13 @@ CREATE TABLE IF NOT EXISTS valuation_runs (
 );
 CREATE TABLE IF NOT EXISTS news_events (
     fingerprint TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS news_price_confirmations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT,
+    state TEXT NOT NULL,
     payload TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -454,6 +461,15 @@ class RuntimeStore:
                 """
             )
             connection.execute(
+                """
+                INSERT OR IGNORE INTO schema_versions(version)
+                SELECT 10
+                WHERE EXISTS (
+                    SELECT 1 FROM schema_versions WHERE version = 9
+                )
+                """
+            )
+            connection.execute(
                 "INSERT OR IGNORE INTO schema_versions(version) VALUES (?)",
                 (SCHEMA_VERSION,),
             )
@@ -555,6 +571,7 @@ class RuntimeStore:
             "top3_evaluations",
             "pipeline_runs",
             "pipeline_stages",
+            "news_price_confirmations",
         }
         if table not in allowed:
             raise ValueError(f"unsupported append table: {table}")
@@ -625,6 +642,7 @@ class RuntimeStore:
             "top3_evaluations",
             "pipeline_runs",
             "pipeline_stages",
+            "news_price_confirmations",
         }
         if table not in allowed:
             raise ValueError(f"unsupported history table: {table}")
@@ -670,6 +688,7 @@ class RuntimeStore:
             "top3_evaluations",
             "pipeline_runs",
             "pipeline_stages",
+            "news_price_confirmations",
         )
         with self.connection() as connection:
             return {

@@ -13,6 +13,7 @@ def test_candidate_state_transition_records_evidence() -> None:
         reason="Passed deterministic filter.",
         actor="screening-agent",
         evidence_urls=["https://www.sec.gov/example"],
+        run_id="test-run",
     )
 
     assert event.new_state is CandidateState.FILTERED
@@ -29,4 +30,5 @@ def test_candidate_state_cannot_skip_research() -> None:
             reason="skip",
             actor="test",
             evidence_urls=[],
+            run_id="test-run",
         )
