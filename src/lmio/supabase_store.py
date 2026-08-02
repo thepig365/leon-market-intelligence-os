@@ -41,6 +41,7 @@ RECORD_KINDS = {
     "top10_rankings",
     "valuation_input_records",
     "operational_lineage",
+    "market_regimes",
 }
 
 LATEST_KINDS = {"universe_runs", "screen_runs", "reports"}
@@ -74,6 +75,7 @@ COUNT_KINDS = (
     "top10_rankings",
     "valuation_input_records",
     "operational_lineage",
+    "market_regimes",
 )
 
 

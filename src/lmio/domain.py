@@ -137,6 +137,7 @@ class SecuritySnapshot(BaseModel):
     borrow_cost_pct: float | None = None
     news_impact_score: float | None = None
     chart_pattern: str | None = None
+    daily_change_pct: float | None = None
     data_completeness: float = Field(default=1.0, ge=0, le=1)
 
 
@@ -327,6 +328,21 @@ class MarketRegime(BaseModel):
     blocked_symbols: list[str] = Field(default_factory=list)
     manual_review_required: bool = False
     observed_at: datetime
+
+
+class MarketEnvironmentSnapshot(BaseModel):
+    """Point-in-time benchmark evidence used to classify the market environment."""
+
+    observed_at: datetime
+    provenance: DataProvenance = DataProvenance.LIVE_AUTHORISED
+    spy_return_pct: float
+    qqq_return_pct: float
+    iwm_return_pct: float
+    vix: float = Field(gt=0)
+    breadth_pct: float = Field(ge=0, le=100)
+    breadth_observations: int = Field(gt=0)
+    vix_observed_on: str
+    source_urls: list[str]
 
 
 class DecisionCard(BaseModel):

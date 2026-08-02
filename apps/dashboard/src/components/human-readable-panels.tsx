@@ -45,6 +45,15 @@ const newsTypeLabels: Record<string, string> = {
   insider_transaction: "内部人士交易",
 };
 
+const marketRegimeLabels: Record<string, string> = {
+  "Risk-On": "风险偏好",
+  "Risk-Off": "风险规避",
+  "High Volatility": "高波动",
+  "Low Volatility": "低波动",
+  "Range": "区间震荡",
+  "Macro Shock": "宏观冲击",
+};
+
 function newsType(value: unknown) {
   const code = text(value, "other");
   if (newsTypeLabels[code]) return newsTypeLabels[code];
@@ -190,6 +199,8 @@ function CommandCentrePanel({ result }: { result: LMIOResult }) {
       providers.finviz,
   );
   const regimeVerified = text(regime.label, "Unverified") !== "Unverified";
+  const regimeLabel = text(regime.label, "Unverified");
+  const regimeEvidence = list(regime.evidence).map((item) => text(item));
   const finvizReady = text(finviz.state, "disabled") === "ready";
   const telegramReady =
     telegram.configured === true && telegram.private_queries_configured === true;
@@ -216,8 +227,16 @@ function CommandCentrePanel({ result }: { result: LMIOResult }) {
               {regimeVerified ? "已核实" : "待核实"}
             </span>
           </div>
-          <h2>{regimeVerified ? text(regime.label) : "尚未独立核实"}</h2>
-          <p>置信度 {percent(regime.confidence)}。未核实时不作方向判断。</p>
+          <h2>
+            {regimeVerified
+              ? `${marketRegimeLabels[regimeLabel] ?? regimeLabel} · ${regimeLabel}`
+              : "尚未独立核实"}
+          </h2>
+          <p>
+            {regimeVerified
+              ? `置信度 ${percent(regime.confidence)} · ${regimeEvidence.slice(0, 5).join(" · ")}`
+              : `置信度 ${percent(regime.confidence)}。未核实时不作方向判断。`}
+          </p>
         </article>
 
         <article className="commandStatusCard">

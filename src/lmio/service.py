@@ -12,6 +12,7 @@ from lmio.demo import demo_universe, meta_acceptance_input
 from lmio.domain import (
     CandidateState,
     DataProvenance,
+    MarketRegime,
     NewsEvent,
     ScreenCandidate,
     SecuritySnapshot,
@@ -52,6 +53,77 @@ class LMIOService:
         else:
             self.store = RuntimeStore(settings.database_path)
         self.store.migrate()
+
+    def _verified_market_regime(
+        self,
+        provider: FinvizAPIProvider,
+        snapshots: list[SecuritySnapshot],
+    ) -> MarketRegime:
+        """Resolve and persist one market regime, failing closed when evidence is incomplete."""
+
+        try:
+            environment = provider.market_environment(snapshots)
+        except Exception as error:
+            regime = unverified_regime()
+            self.store.append_json(
+                "provider_health",
+                {
+                    "provider": "market_environment",
+                    "state": "unavailable",
+                    "payload": {
+                        "detail": type(error).__name__,
+                        "required_inputs": ["SPY", "QQQ", "IWM", "VIX", "market breadth"],
+                    },
+                },
+            )
+            return regime
+
+        classified = classify_regime(
+            environment.spy_return_pct,
+            environment.qqq_return_pct,
+            environment.iwm_return_pct,
+            environment.vix,
+            environment.breadth_pct,
+        )
+        regime = classified.model_copy(
+            update={
+                "observed_at": environment.observed_at,
+                "evidence": [
+                    *classified.evidence,
+                    f"市场广度样本 {environment.breadth_observations}",
+                    f"VIX 收盘日期 {environment.vix_observed_on}",
+                ],
+            }
+        )
+        payload = {
+            "environment": environment.model_dump(mode="json"),
+            "regime": regime.model_dump(mode="json"),
+            "calculation_version": "market-regime-v1",
+        }
+        self.store.append_json(
+            "market_regimes",
+            {
+                "source": "Finviz Elite + Cboe VIX History",
+                "source_url": environment.source_urls[0],
+                "observed_at": environment.observed_at.isoformat(),
+                "schema_version": "1",
+                "payload": payload,
+            },
+        )
+        self.store.append_json(
+            "provider_health",
+            {
+                "provider": "market_environment",
+                "state": "ready",
+                "payload": {
+                    "detail": f"{regime.label} at {regime.confidence:.0%} confidence",
+                    "observed_at": environment.observed_at.isoformat(),
+                    "sources": environment.source_urls,
+                    "breadth_observations": environment.breadth_observations,
+                },
+            },
+        )
+        return regime
 
     def run_demo_daily(self) -> dict[str, object]:
         valuation = run_valuation(meta_acceptance_input())
@@ -126,6 +198,8 @@ class LMIOService:
                 )
                 snapshot_ids[snapshot.symbol.upper()] = f"snapshot-{fingerprint}"
             context["snapshot_ids"] = snapshot_ids
+            regime = self._verified_market_regime(provider, snapshots)
+            context["regime"] = regime
             evidence = provider.last_ingestion_evidence or {}
             self.store.append_json(
                 "provider_health",
@@ -136,9 +210,19 @@ class LMIOService:
                 },
             )
             return StageResult(
+                status=(
+                    StageStatus.SUCCEEDED
+                    if regime.label != "Unverified"
+                    else StageStatus.PARTIAL
+                ),
                 output_count=len(snapshots),
+                warning_count=int(regime.label == "Unverified"),
                 evidence_references=sorted(snapshot_ids.values()),
-                details={"provider_snapshot_ids": snapshot_ids},
+                details={
+                    "provider_snapshot_ids": snapshot_ids,
+                    "market_regime": regime.label,
+                    "market_regime_confidence": regime.confidence,
+                },
             )
 
         def official_refresh(context: dict[str, object]) -> StageResult:
@@ -468,7 +552,9 @@ class LMIOService:
                 top,
                 universe_checked=len(snapshots),
                 investable=len(list(context.get("investable") or [])),
-                regime=unverified_regime(),
+                regime=MarketRegime.model_validate(
+                    context.get("regime") or unverified_regime()
+                ),
                 data_mode=provider.name,
                 valuations=valuations,
                 research_packs=packs,
@@ -1098,6 +1184,7 @@ class LMIOService:
             )
             raise RuntimeError("Finviz refresh failed safely") from error
 
+        regime = self._verified_market_regime(provider, snapshots)
         health = provider.health()
         ingestion_evidence = provider.last_ingestion_evidence or {}
         self.store.append_json(
@@ -1108,7 +1195,7 @@ class LMIOService:
                 "payload": {"detail": health.detail, "ingestion": ingestion_evidence},
             },
         )
-        report = self.run_daily(snapshots, data_mode=provider.name)
+        report = self.run_daily(snapshots, data_mode=provider.name, regime=regime)
         if report.get("provenance") != DataProvenance.LIVE_AUTHORISED:
             raise RuntimeError("Only live authorised reports may be delivered to Telegram")
         delivery = queue_or_send(
@@ -1263,6 +1350,7 @@ class LMIOService:
         valuations: dict[str, ValuationResult] | None = None,
         research_packs: dict[str, ResearchPack] | None = None,
         run_id: str = "standalone-daily-run",
+        regime: MarketRegime | None = None,
     ) -> dict[str, object]:
         if not snapshots:
             raise ValueError("A daily run requires at least one snapshot")
@@ -1280,16 +1368,20 @@ class LMIOService:
         input_hash = hashlib.sha256(json.dumps(serialised, sort_keys=True).encode()).hexdigest()
         candidates = run_core_screens(investable)
         operational_candidates = candidates[:MAX_OPERATIONAL_CANDIDATES]
-        regime = (
-            classify_regime(0.7, 1.0, 0.4, 17.5, 58)
-            if provenance is DataProvenance.SYNTHETIC_REPLAY
-            else unverified_regime()
+        resolved_regime = (
+            regime
+            if regime is not None
+            else (
+                classify_regime(0.7, 1.0, 0.4, 17.5, 58)
+                if provenance is DataProvenance.SYNTHETIC_REPLAY
+                else unverified_regime()
+            )
         )
         report = build_daily_report(
             candidates,
             universe_checked=len(snapshots),
             investable=len(investable),
-            regime=regime,
+            regime=resolved_regime,
             data_mode=data_mode,
             valuations=valuations,
             research_packs=research_packs,

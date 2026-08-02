@@ -57,8 +57,8 @@ external provider or protected production environment has been activated.
 
 | Requirement | Status | Evidence |
 | --- | --- | --- |
-| SPY, QQQ, IWM, VIX, breadth | Implemented | `reports.py` |
-| Yields, DXY, USDJPY, oil, gold, sectors, macro events | Implemented | `reports.py` |
+| SPY, QQQ, IWM, VIX, breadth | Operational path implemented with authorised Finviz inputs, official Cboe VIX history, persistence and fail-safe validation | `providers/finviz_api.py`, `reports.py`, market-environment tests |
+| Yields, DXY, USDJPY, oil, gold, sectors, macro events | Classification parameters implemented; operational provider enrichment remains pending | `reports.py`, `docs/MARKET_ENVIRONMENT.md` |
 | Supporting/contrary evidence and strategy controls | Implemented | `MarketRegime` |
 | 13 dashboard routes | Implemented | `apps/dashboard`, dashboard verification and build |
 | Runtime APIs for reports, screens, valuations, candidates, research, news, ownership, plans, signals, performance, watchlists | Implemented | `main.py` |

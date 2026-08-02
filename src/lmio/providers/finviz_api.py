@@ -1,14 +1,16 @@
 """Server-side Finviz Elite API adapter for authorised internal research."""
 
+import csv
 import logging
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from io import StringIO
 from time import sleep
 
 import httpx
 
-from lmio.domain import DataProvenance, SecuritySnapshot
+from lmio.domain import DataProvenance, MarketEnvironmentSnapshot, SecuritySnapshot
 from lmio.providers.base import ProviderHealth, ProviderState
 from lmio.providers.contracts import MarketDataProvider
 from lmio.providers.csv_snapshot import MAX_CSV_BYTES
@@ -18,8 +20,12 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 FINVIZ_EXPORT_URL = "https://elite.finviz.com/export/screener"
-FINVIZ_COLUMNS = "1,2,3,4,5,129,6,8,22,23,39,40,34,38,45,54,127,64,63,67,65,59,29,30,31"
+FINVIZ_COLUMNS = (
+    "1,2,3,4,5,129,6,8,22,23,39,40,34,38,45,54,127,64,63,67,65,66,59,29,30,31"
+)
+VIX_HISTORY_URL = "https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv"
 FinvizTransport = Callable[[str, dict[str, str], float], httpx.Response]
+VixTransport = Callable[[str, float], httpx.Response]
 
 
 def _default_transport(
@@ -35,6 +41,26 @@ def _default_transport(
         return client.get(url, params=params)
 
 
+def _default_vix_transport(url: str, timeout: float) -> httpx.Response:
+    with httpx.Client(
+        timeout=timeout,
+        follow_redirects=True,
+        headers={"User-Agent": "LMIO/1.0 internal market-environment research"},
+    ) as client:
+        return client.get(url)
+
+
+def _percentage(value: str | None) -> float | None:
+    if value is None:
+        return None
+    normalised = value.strip().replace(",", "")
+    if not normalised or normalised == "-":
+        return None
+    if normalised.endswith("%"):
+        normalised = normalised[:-1]
+    return float(normalised)
+
+
 class FinvizAPIProvider(MarketDataProvider):
     """Fetch and normalise one bounded Finviz Elite screener snapshot."""
 
@@ -45,10 +71,12 @@ class FinvizAPIProvider(MarketDataProvider):
         api_token: str,
         *,
         transport: FinvizTransport | None = None,
+        vix_transport: VixTransport | None = None,
         wait: Callable[[float], None] = sleep,
     ) -> None:
         self._api_token = api_token.strip()
         self._transport = transport or _default_transport
+        self._vix_transport = vix_transport or _default_vix_transport
         self._wait = wait
         self._health = ProviderHealth(
             provider=self.name,
@@ -62,6 +90,7 @@ class FinvizAPIProvider(MarketDataProvider):
             ),
         )
         self._last_ingestion_evidence: dict[str, object] | None = None
+        self._benchmark_changes: dict[str, float] = {}
 
     @property
     def last_ingestion_evidence(self) -> dict[str, object] | None:
@@ -111,10 +140,18 @@ class FinvizAPIProvider(MarketDataProvider):
             raise ValueError("Finviz API returned an unexpected content type")
 
         checksum = sha256(raw).hexdigest()
+        decoded = raw.decode("utf-8-sig")
+        rows = list(csv.DictReader(StringIO(decoded)))
+        self._benchmark_changes = {
+            ticker: change
+            for row in rows
+            if (ticker := str(row.get("Ticker", "")).strip().upper()) in {"SPY", "QQQ", "IWM"}
+            and (change := _percentage(row.get("Change"))) is not None
+        }
         parser = FinvizCSVProvider()
         observed_at = datetime.now(UTC)
         snapshots = parser.parse(
-            raw.decode("utf-8-sig"),
+            decoded,
             observed_at=observed_at,
             provenance=DataProvenance.LIVE_AUTHORISED,
         )
@@ -152,3 +189,56 @@ class FinvizAPIProvider(MarketDataProvider):
             ),
         )
         return snapshots
+
+    def market_environment(
+        self,
+        snapshots: list[SecuritySnapshot],
+        *,
+        now: datetime | None = None,
+    ) -> MarketEnvironmentSnapshot:
+        """Build one verified benchmark snapshot from licensed Finviz and official Cboe data."""
+
+        missing = {"SPY", "QQQ", "IWM"} - self._benchmark_changes.keys()
+        if missing:
+            raise ValueError(
+                "Finviz market snapshot is missing benchmark changes: "
+                + ", ".join(sorted(missing))
+            )
+        breadth_values = [
+            item.daily_change_pct for item in snapshots if item.daily_change_pct is not None
+        ]
+        if len(breadth_values) < 100:
+            raise ValueError("Finviz market breadth coverage is insufficient")
+
+        response = self._vix_transport(VIX_HISTORY_URL, 30.0)
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "").lower()
+        if content_type and not any(
+            allowed in content_type
+            for allowed in ("text/csv", "text/plain", "application/octet-stream")
+        ):
+            raise ValueError("Cboe VIX history returned an unexpected content type")
+        vix_rows = list(csv.DictReader(StringIO(response.text.lstrip("\ufeff"))))
+        if not vix_rows:
+            raise ValueError("Cboe VIX history returned no observations")
+        latest = vix_rows[-1]
+        vix = _percentage(latest.get("CLOSE"))
+        date_text = str(latest.get("DATE", "")).strip()
+        if vix is None or not date_text:
+            raise ValueError("Cboe VIX history is missing its latest close")
+        observed_date = datetime.strptime(date_text, "%m/%d/%Y").replace(tzinfo=UTC)
+        checked_at = (now or datetime.now(UTC)).astimezone(UTC)
+        if checked_at - observed_date > timedelta(days=5):
+            raise ValueError("Cboe VIX close is stale")
+
+        return MarketEnvironmentSnapshot(
+            observed_at=checked_at,
+            spy_return_pct=self._benchmark_changes["SPY"],
+            qqq_return_pct=self._benchmark_changes["QQQ"],
+            iwm_return_pct=self._benchmark_changes["IWM"],
+            vix=vix,
+            breadth_pct=sum(value > 0 for value in breadth_values) / len(breadth_values) * 100,
+            breadth_observations=len(breadth_values),
+            vix_observed_on=observed_date.date().isoformat(),
+            source_urls=[FINVIZ_EXPORT_URL, VIX_HISTORY_URL],
+        )

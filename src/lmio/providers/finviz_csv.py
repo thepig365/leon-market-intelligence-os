@@ -37,6 +37,7 @@ FIELD_MAP = {
     "Relative Strength Index (14)": "rsi_14",
     "Short Float": "short_interest_float_pct",
     "Short Ratio": "days_to_cover",
+    "Change": "daily_change_pct",
 }
 
 EXCHANGE_MAP = {
