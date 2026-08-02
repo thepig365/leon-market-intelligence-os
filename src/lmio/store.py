@@ -537,6 +537,7 @@ class RuntimeStore:
             "screen_runs",
             "valuation_runs",
             "reports",
+            "system_events",
             "research_packs",
             "conditional_plans",
             "provider_health",

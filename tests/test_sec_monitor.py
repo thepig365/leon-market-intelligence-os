@@ -30,16 +30,28 @@ def test_monitor_persists_official_filings_once(tmp_path: Path) -> None:
     second = monitor_sec(provider, store, {"AAPL": "320193"})
 
     assert first == {
+        "status": "succeeded",
         "symbols": 1,
+        "attempted": 1,
         "checked": 1,
+        "succeeded": 1,
+        "skipped": 0,
+        "failed": 0,
         "inserted": 1,
         "ownership_inserted": 0,
+        "failures": [],
     }
     assert second == {
+        "status": "succeeded",
         "symbols": 1,
+        "attempted": 1,
         "checked": 1,
+        "succeeded": 1,
+        "skipped": 0,
+        "failed": 0,
         "inserted": 0,
         "ownership_inserted": 0,
+        "failures": [],
     }
     assert store.counts()["news_events"] == 1
 
@@ -230,3 +242,67 @@ def test_monitor_resolves_and_parses_13f_information_table(tmp_path: Path) -> No
     assert records[0]["event_type"] == "institutional_holdings"
     assert records[0]["payload"]["value_usd"] == 125_000
     assert records[0]["source_url"].endswith("/information_table.xml")
+
+
+def test_one_failing_filing_does_not_abort_valid_filings(tmp_path: Path) -> None:
+    submissions = {
+        "cik": "1",
+        "filings": {
+            "recent": {
+                "accessionNumber": ["bad-accession", "good-accession"],
+                "filingDate": ["2026-07-30", "2026-07-30"],
+                "form": ["4", "4"],
+                "primaryDocument": ["bad.xml", "good.xml"],
+            }
+        },
+    }
+    valid_form = """
+    <ownershipDocument>
+      <issuer>
+        <issuerName>Good Corp</issuerName><issuerTradingSymbol>GOOD</issuerTradingSymbol>
+      </issuer>
+      <reportingOwner>
+        <reportingOwnerId><rptOwnerName>Owner</rptOwnerName></reportingOwnerId>
+      </reportingOwner>
+      <nonDerivativeTable>
+        <nonDerivativeTransaction>
+          <securityTitle><value>Common Stock</value></securityTitle>
+          <transactionDate><value>2026-07-29</value></transactionDate>
+          <transactionCoding><transactionCode>P</transactionCode></transactionCoding>
+          <transactionAmounts>
+            <transactionShares><value>10</value></transactionShares>
+            <transactionPricePerShare><value>5</value></transactionPricePerShare>
+            <transactionAcquiredDisposedCode><value>A</value></transactionAcquiredDisposedCode>
+          </transactionAmounts>
+          <ownershipNature><directOrIndirectOwnership><value>D</value></directOrIndirectOwnership></ownershipNature>
+        </nonDerivativeTransaction>
+      </nonDerivativeTable>
+    </ownershipDocument>
+    """
+
+    def transport(url: str, _headers: dict[str, str]) -> bytes:
+        if url.startswith("https://data.sec.gov/"):
+            return json.dumps(submissions).encode()
+        if url.endswith("/bad.xml"):
+            raise TimeoutError("one filing timed out")
+        return valid_form.encode()
+
+    provider = SECProvider("LMIO admin@example.test", transport)
+    store = RuntimeStore(tmp_path / "runtime.sqlite3")
+    store.migrate()
+
+    result = monitor_sec(provider, store, {"TEST": "1"})
+
+    assert result["status"] == "partial"
+    assert result["attempted"] == 2
+    assert result["succeeded"] == 1
+    assert result["failed"] == 1
+    assert result["ownership_inserted"] == 1
+    assert result["failures"][0]["failure_category"] == "timeout"
+    assert result["failures"][0]["retry_count"] == 3
+    failures = [
+        item
+        for item in store.history_json("system_events")
+        if item["event_type"] == "sec_filing_failure"
+    ]
+    assert failures[0]["payload"]["failure_fingerprint"]

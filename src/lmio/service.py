@@ -193,7 +193,12 @@ class LMIOService:
             sec = {"status": "unavailable", "detail": type(error).__name__}
             sec_state = "unavailable"
         else:
-            sec_state = "degraded" if resolution_failed else "ready"
+            if sec.get("status") == "failed":
+                sec_state = "unavailable"
+            elif sec.get("status") == "partial" or resolution_failed:
+                sec_state = "degraded"
+            else:
+                sec_state = "ready"
             sec["unresolved_symbols"] = len(candidate_symbols - configured.keys())
         self.store.append_json(
             "provider_health",
