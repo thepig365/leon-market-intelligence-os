@@ -24,12 +24,12 @@ def test_backup_is_consistent_verified_and_non_destructive(tmp_path: Path) -> No
     assert active_path.exists()
     assert backup_path.exists()
     assert manifest["integrity"] == ["ok"]
-    assert manifest["schema_versions"] == [9]
+    assert manifest["schema_versions"] == [10]
     assert manifest["counts"] == store.counts()
     assert manifest["sha256"]
     assert manifest["bytes"] > 0
     assert store.connectivity_check()["status"] == "ok"
-    assert store.schema_check()["schema_versions"] == [9]
+    assert store.schema_check()["schema_versions"] == [10]
     assert store.rls_check()["status"] == "not_applicable"
     assert store.record_count_check()["counts"]["reports"] == 1
     assert store.referential_integrity_check() == {"status": "ok", "findings": []}
@@ -73,7 +73,7 @@ def test_schema_six_upgrades_an_existing_schema_three_store(tmp_path: Path) -> N
     store = RuntimeStore(path)
     store.migrate()
 
-    assert store.schema_versions() == [3, 4, 5, 6, 7, 8, 9]
+    assert store.schema_versions() == [3, 4, 5, 6, 7, 8, 9, 10]
     with store.connection() as upgraded:
         row = upgraded.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'ingestion_dedup'"
@@ -109,11 +109,11 @@ def test_schema_five_adds_telegram_retry_fields_to_schema_four(
     store = RuntimeStore(path)
     store.migrate()
 
-    assert store.schema_versions() == [4, 5, 6, 7, 8, 9]
+    assert store.schema_versions() == [4, 5, 6, 7, 8, 9, 10]
     with store.connection() as upgraded:
         row = upgraded.execute(
             """
-            SELECT attempt_count, last_attempt_at
+            SELECT attempt_count, last_attempt_at, claim_token, claimed_at
             FROM telegram_deliveries
             WHERE dedupe_key = 'legacy'
             """
@@ -121,3 +121,5 @@ def test_schema_five_adds_telegram_retry_fields_to_schema_four(
     assert row is not None
     assert row["attempt_count"] == 0
     assert row["last_attempt_at"] is None
+    assert row["claim_token"] is None
+    assert row["claimed_at"] is None

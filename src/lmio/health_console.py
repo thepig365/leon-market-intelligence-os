@@ -99,6 +99,9 @@ def _latest_freshness(
 
 
 def build_system_health(store: Any, settings: Settings) -> dict[str, object]:
+    from lmio.scheduler import scheduler_status
+
+    scheduler = scheduler_status(store)
     pipeline_runs = store.history_json("pipeline_runs", 1)
     pipeline = pipeline_runs[0] if pipeline_runs else None
     pipeline_payload = dict(pipeline.get("payload") or {}) if pipeline else {}
@@ -151,7 +154,7 @@ def build_system_health(store: Any, settings: Settings) -> dict[str, object]:
             "dashboard": "configured",
             "runtime_api": "ready",
             "database": store.connectivity_check()["status"],
-            "scheduler": "not_verified",
+            "scheduler": scheduler,
             "telegram": (
                 "configured_not_verified"
                 if settings.integration_readiness()["telegram_configured"]
@@ -167,7 +170,10 @@ def build_system_health(store: Any, settings: Settings) -> dict[str, object]:
                 failed_or_blocked.get("stage_name") if failed_or_blocked else None
             ),
             "retry_status": "recorded_per_stage" if pipeline else "not_applicable",
-            "next_run": None,
+            "next_run": min(
+                (str(item["next_scheduled_time"]) for item in scheduler["jobs"]),
+                default=None,
+            ),
             "duration_ms": pipeline_payload.get("duration_ms"),
         },
         "safety": {

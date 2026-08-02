@@ -123,9 +123,9 @@ class SupabaseRuntimeStore:
     def schema_check(self) -> dict[str, Any]:
         versions = self.schema_versions()
         return {
-            "status": "ok" if versions and max(versions) >= 9 else "failed",
+            "status": "ok" if versions and max(versions) >= 10 else "failed",
             "schema_versions": versions,
-            "required_version": 9,
+            "required_version": 10,
         }
 
     def rls_check(self) -> dict[str, Any]:
@@ -477,6 +477,24 @@ class SupabaseRuntimeStore:
         )
         rows = response.json()
         return rows[0] if rows else None
+
+    def claim_telegram_deliveries(
+        self,
+        *,
+        claim_token: str,
+        limit: int,
+        max_attempts: int,
+    ) -> list[dict[str, Any]]:
+        response = self._request(
+            "POST",
+            "rpc/lmio_claim_telegram_deliveries",
+            json={
+                "p_claim_token": claim_token,
+                "p_limit": max(1, min(limit, 50)),
+                "p_max_attempts": max_attempts,
+            },
+        )
+        return list(response.json())
 
     def sent_telegram_count_since(self, since: datetime) -> int:
         response = self._request(

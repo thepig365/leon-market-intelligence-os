@@ -2,6 +2,9 @@
 
 import hashlib
 import json
+from dataclasses import asdict
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from lmio.candidates import transition_candidate
 from lmio.config import Settings
@@ -12,9 +15,11 @@ from lmio.domain import (
     NewsEvent,
     ScreenCandidate,
     SecuritySnapshot,
+    SignalRecord,
     ValuationResult,
 )
 from lmio.official_news_monitor import monitor_official_news
+from lmio.outcomes import TimedPrice, evaluate_timed_horizon
 from lmio.pipeline import OperationalPipeline, StageResult, StageStatus
 from lmio.providers.finviz_api import FinvizAPIProvider
 from lmio.providers.official_rss import OfficialRSSProvider
@@ -263,6 +268,52 @@ class LMIOService:
                 evidence_references=["runtime:connectivity", "runtime:schema", "runtime:counts"],
             )
 
+        def signal_creation(context: dict[str, object]) -> StageResult:
+            report = dict(context.get("report") or {})
+            selected = list(dict(report.get("top_3_status") or {}).get("evaluations") or [])
+            approved = [item for item in selected if item.get("state") == "top3_selected"]
+            if not approved:
+                return StageResult(
+                    status=StageStatus.PARTIAL,
+                    warning_count=1,
+                    error_summary="No evidence-complete Top 3 candidate is approved for a signal.",
+                    evidence_references=["store:top3_evaluations"],
+                )
+            return StageResult(
+                status=StageStatus.PARTIAL,
+                warning_count=len(approved),
+                error_summary="Formal signals require an authenticated approved conditional plan.",
+                evidence_references=["store:conditional_plans", "store:top3_evaluations"],
+            )
+
+        def due_outcomes(_: dict[str, object]) -> StageResult:
+            result = self.process_due_outcomes()
+            return StageResult(
+                status=(
+                    StageStatus.SUCCEEDED
+                    if result["failed"] == 0
+                    else StageStatus.PARTIAL
+                ),
+                output_count=int(result["completed"]),
+                warning_count=int(result["unavailable"]),
+                error_summary=(
+                    None if result["failed"] == 0 else "One or more due outcomes failed."
+                ),
+                evidence_references=["store:signal_outcomes"],
+            )
+
+        def performance(_: dict[str, object]) -> StageResult:
+            result = self.aggregate_strategy_performance()
+            return StageResult(
+                status=(
+                    StageStatus.SUCCEEDED
+                    if result["eligible_outcomes"]
+                    else StageStatus.SKIPPED
+                ),
+                output_count=int(result["summaries"]),
+                evidence_references=["store:strategy_performance"],
+            )
+
         handlers = {
             1: preflight,
             2: market_snapshot,
@@ -281,9 +332,145 @@ class LMIOService:
             15: existing_output,
             16: daily_brief,
             17: telegram,
+            18: signal_creation,
+            19: due_outcomes,
+            20: performance,
             21: health,
         }
         return OperationalPipeline(self.store, handlers).run()
+
+    @staticmethod
+    def _outcome_due_times(signal_time: datetime) -> dict[str, datetime]:
+        new_york = ZoneInfo("America/New_York")
+        local_signal = signal_time.astimezone(new_york)
+
+        def next_close(trading_days: int) -> datetime:
+            day = local_signal.date()
+            remaining = trading_days
+            while remaining > 0:
+                day += timedelta(days=1)
+                if day.weekday() < 5:
+                    remaining -= 1
+            return datetime(day.year, day.month, day.day, 16, tzinfo=new_york).astimezone(UTC)
+
+        same_day_close = datetime(
+            local_signal.year,
+            local_signal.month,
+            local_signal.day,
+            16,
+            tzinfo=new_york,
+        )
+        if local_signal.weekday() >= 5 or same_day_close <= signal_time:
+            close_due = next_close(1)
+        else:
+            close_due = same_day_close.astimezone(UTC)
+        return {
+            "1h": signal_time + timedelta(hours=1),
+            "close": close_due,
+            "1d": next_close(1),
+            "5d": next_close(5),
+            "20d": next_close(20),
+        }
+
+    def process_due_outcomes(self, *, now: datetime | None = None) -> dict[str, int | str]:
+        """Progress due signal horizons using only persisted timestamped prices."""
+
+        current = now or datetime.now(UTC)
+        signals = self.store.history_json("signals", 200)
+        existing = self.store.history_json("signal_outcomes", 200)
+        completed_keys = {
+            (str(dict(item.get("payload") or {}).get("signal_id")), str(item["horizon"]))
+            for item in existing
+            if dict(item.get("payload") or {}).get("status") == "completed"
+        }
+        snapshot_rows = self.store.history_json("provider_snapshots", 200)
+        by_symbol: dict[str, list[TimedPrice]] = {}
+        for row in snapshot_rows:
+            payload = dict(row.get("payload") or {})
+            observed_at = datetime.fromisoformat(
+                str(row.get("observed_at") or payload.get("observed_at")).replace("Z", "+00:00")
+            )
+            price = payload.get("price")
+            if price is not None:
+                by_symbol.setdefault(str(row.get("symbol", "")).upper(), []).append(
+                    TimedPrice(observed_at=observed_at, price=float(price))
+                )
+        counts = {"completed": 0, "not_due": 0, "unavailable": 0, "failed": 0}
+        for row in signals:
+            try:
+                signal = SignalRecord.model_validate(row["payload"])
+            except Exception:
+                counts["failed"] += 1
+                continue
+            due_times = self._outcome_due_times(signal.created_at)
+            for horizon, due_at in due_times.items():
+                if (signal.signal_id, horizon) in completed_keys:
+                    continue
+                outcome = evaluate_timed_horizon(
+                    horizon=horizon,
+                    signal_time=signal.created_at,
+                    signal_price=signal.signal_price,
+                    benchmark_price=signal.benchmark_price,
+                    due_at=due_at,
+                    prices=by_symbol.get(signal.symbol, []),
+                    now=current,
+                )
+                counts[outcome.status.value] += 1
+                self.store.append_json(
+                    "signal_outcomes",
+                    {
+                        "symbol": signal.symbol,
+                        "strategy": signal.strategy,
+                        "signal_date": signal.created_at.date().isoformat(),
+                        "horizon": horizon,
+                        "return_pct": outcome.return_pct,
+                        "max_adverse_excursion_pct": outcome.max_adverse_excursion_pct,
+                        "max_favourable_excursion_pct": outcome.max_favourable_excursion_pct,
+                        "payload": {
+                            **asdict(outcome),
+                            "status": outcome.status,
+                            "signal_id": signal.signal_id,
+                            "due_at": due_at.isoformat(),
+                            "evaluated_at": current.isoformat(),
+                        },
+                    },
+                )
+        return {"status": "completed", **counts}
+
+    def aggregate_strategy_performance(self) -> dict[str, int | str]:
+        """Aggregate only completed outcomes; unknown values never become zero."""
+
+        completed = [
+            item
+            for item in self.store.history_json("signal_outcomes", 200)
+            if dict(item.get("payload") or {}).get("status") == "completed"
+            and item.get("return_pct") is not None
+        ]
+        groups: dict[tuple[str, str], list[dict[str, object]]] = {}
+        for item in completed:
+            groups.setdefault((str(item["strategy"]), str(item["horizon"])), []).append(item)
+        for (strategy, horizon), items in groups.items():
+            returns = [float(item["return_pct"]) for item in items]
+            self.store.append_json(
+                "strategy_performance",
+                {
+                    "strategy": strategy,
+                    "horizon": horizon,
+                    "regime": None,
+                    "payload": {
+                        "sample_count": len(items),
+                        "hit_rate": sum(value > 0 for value in returns) / len(returns),
+                        "average_return": sum(returns) / len(returns),
+                        "model_version": "strategy-performance-v2",
+                        "eligibility": "completed_outcomes_only",
+                    },
+                },
+            )
+        return {
+            "status": "completed",
+            "eligible_outcomes": len(completed),
+            "summaries": len(groups),
+        }
 
     def refresh_finviz(
         self,

@@ -9,7 +9,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 MIGRATION = """
 CREATE TABLE IF NOT EXISTS schema_versions (
     version INTEGER PRIMARY KEY,
@@ -102,6 +102,8 @@ CREATE TABLE IF NOT EXISTS telegram_deliveries (
     provider_message_id TEXT,
     attempt_count INTEGER NOT NULL DEFAULT 0,
     last_attempt_at TEXT,
+    claim_token TEXT,
+    claimed_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS system_events (
@@ -389,6 +391,14 @@ class RuntimeStore:
                 connection.execute(
                     "ALTER TABLE telegram_deliveries ADD COLUMN last_attempt_at TEXT"
                 )
+            if "claim_token" not in telegram_columns:
+                connection.execute(
+                    "ALTER TABLE telegram_deliveries ADD COLUMN claim_token TEXT"
+                )
+            if "claimed_at" not in telegram_columns:
+                connection.execute(
+                    "ALTER TABLE telegram_deliveries ADD COLUMN claimed_at TEXT"
+                )
             connection.execute(
                 """
                 INSERT OR IGNORE INTO schema_versions(version)
@@ -431,6 +441,15 @@ class RuntimeStore:
                 SELECT 8
                 WHERE EXISTS (
                     SELECT 1 FROM schema_versions WHERE version = 7
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO schema_versions(version)
+                SELECT 9
+                WHERE EXISTS (
+                    SELECT 1 FROM schema_versions WHERE version = 8
                 )
                 """
             )
@@ -588,6 +607,7 @@ class RuntimeStore:
             "screen_runs",
             "valuation_runs",
             "reports",
+            "signal_outcomes",
             "system_events",
             "research_packs",
             "conditional_plans",
@@ -809,6 +829,57 @@ class RuntimeStore:
                 (key,),
             ).fetchone()
         return dict(row) if row is not None else None
+
+    def claim_telegram_deliveries(
+        self,
+        *,
+        claim_token: str,
+        limit: int,
+        max_attempts: int,
+    ) -> list[dict[str, Any]]:
+        """Atomically claim retryable outbox messages for one drain worker."""
+
+        bounded_limit = max(1, min(limit, 50))
+        connection = sqlite3.connect(self.path, isolation_level=None)
+        connection.row_factory = sqlite3.Row
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute(
+                """
+                SELECT dedupe_key, payload, attempt_count
+                FROM telegram_deliveries
+                WHERE status IN ('queued_not_configured', 'failed', 'suppressed_rate_limit')
+                  AND attempt_count < ?
+                ORDER BY created_at ASC
+                LIMIT ?
+                """,
+                (max_attempts, bounded_limit),
+            ).fetchall()
+            keys = [str(row["dedupe_key"]) for row in rows]
+            if keys:
+                placeholders = ",".join("?" for _ in keys)
+                connection.execute(
+                    f"""
+                    UPDATE telegram_deliveries
+                    SET status = 'claimed', claim_token = ?, claimed_at = CURRENT_TIMESTAMP
+                    WHERE dedupe_key IN ({placeholders})
+                    """,
+                    (claim_token, *keys),
+                )
+            connection.execute("COMMIT")
+        except Exception:
+            connection.execute("ROLLBACK")
+            raise
+        finally:
+            connection.close()
+        return [
+            {
+                "dedupe_key": row["dedupe_key"],
+                "payload": json.loads(row["payload"]),
+                "attempt_count": row["attempt_count"],
+            }
+            for row in rows
+        ]
 
     def sent_telegram_count_since(self, since: datetime) -> int:
         value = since.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")

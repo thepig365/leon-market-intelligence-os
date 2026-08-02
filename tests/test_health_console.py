@@ -13,7 +13,8 @@ def test_system_health_is_truthful_when_no_pipeline_or_data_exists(tmp_path: Pat
 
     assert health["status"] == "degraded"
     assert health["pipeline"]["status"] == "never_run"
-    assert health["application"]["scheduler"] == "not_verified"
+    assert health["application"]["scheduler"]["manifest_loaded"] is True
+    assert health["application"]["scheduler"]["executor_process"] == "not_verified"
     assert health["safety"] == {
         "CAN_TRADE": False,
         "LIVE_TRADING_ENABLED": False,

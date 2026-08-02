@@ -177,7 +177,7 @@ def test_supabase_diagnostics_keep_checks_separate() -> None:
     )
 
     assert store.connectivity_check()["status"] == "ok"
-    assert store.schema_check()["required_version"] == 9
+    assert store.schema_check()["required_version"] == 10
     assert store.schema_check()["status"] == "failed"
     assert store.rls_check()["rls_enabled"] == 7
     assert store.referential_integrity_check()["status"] == "not_applicable"

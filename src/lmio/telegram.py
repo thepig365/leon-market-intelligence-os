@@ -8,6 +8,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from urllib import parse, request
+from uuid import uuid4
 
 import httpx
 
@@ -176,10 +177,11 @@ def queue_or_send(
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     transport: TelegramTransport | None = None,
     dedupe_context: str = "",
+    delivery_key: str | None = None,
 ) -> str:
     """Queue safely, or make one bounded delivery attempt per invocation."""
 
-    key = message_key(message, dedupe_context)
+    key = delivery_key or message_key(message, dedupe_context)
     store.migrate()
     existing = store.telegram_delivery(key)
     if existing and existing["status"] == "sent":
@@ -284,6 +286,49 @@ def queue_or_send(
         attempt_increment=1,
     )
     return "sent"
+
+
+def drain_outbox(
+    store: TelegramStore,
+    *,
+    bot_token: str,
+    chat_id: str,
+    batch_size: int = 20,
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+    transport: TelegramTransport | None = None,
+) -> dict[str, object]:
+    """Atomically claim and drain a bounded Telegram outbox batch."""
+
+    claim_token = f"telegram-drain-{uuid4().hex}"
+    claimed = store.claim_telegram_deliveries(
+        claim_token=claim_token,
+        limit=batch_size,
+        max_attempts=max_attempts,
+    )
+    results: dict[str, int] = {}
+    for item in claimed:
+        payload = dict(item.get("payload") or {})
+        raw_kind = str(payload.get("kind", MessageKind.PREMARKET))
+        try:
+            kind = MessageKind(raw_kind)
+        except ValueError:
+            kind = MessageKind.PREMARKET
+        status = queue_or_send(
+            store,
+            str(payload.get("message", "")),
+            bot_token=bot_token,
+            chat_id=chat_id,
+            kind=kind,
+            max_attempts=max_attempts,
+            transport=transport,
+            delivery_key=str(item["dedupe_key"]),
+        )
+        results[status] = results.get(status, 0) + 1
+    return {
+        "status": "completed",
+        "claimed": len(claimed),
+        "results": results,
+    }
 
 
 def delivery_count(store: TelegramStore) -> int:

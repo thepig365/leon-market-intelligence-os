@@ -27,10 +27,12 @@ def main() -> None:
             "refresh-sec",
             "refresh-news",
             "research-latest",
+            "scheduled-job",
             "status",
         ),
     )
     parser.add_argument("--file", type=Path)
+    parser.add_argument("--job-id")
     args = parser.parse_args()
     service = LMIOService(get_settings())
     if args.command == "backup":
@@ -110,6 +112,12 @@ def main() -> None:
         payload = service.run_meta_acceptance()
     elif args.command == "operational-daily":
         payload = service.run_operational_pipeline()
+    elif args.command == "scheduled-job":
+        if not args.job_id:
+            parser.error("--job-id is required for scheduled-job")
+        from lmio.scheduler import run_scheduled_job
+
+        payload = run_scheduled_job(service, args.job_id)
     else:
         payload = {
             "counts": service.store.counts(),

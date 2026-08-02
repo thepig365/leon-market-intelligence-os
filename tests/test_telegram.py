@@ -5,6 +5,7 @@ from lmio.store import RuntimeStore
 from lmio.telegram import (
     MAX_MESSAGE_CHARS,
     MessageKind,
+    drain_outbox,
     format_message,
     queue_or_send,
 )
@@ -86,6 +87,36 @@ def test_queued_delivery_can_send_after_credentials_are_configured(
         "provider_message_id": "42",
         "attempt_count": 1,
     }
+
+
+def test_outbox_claim_is_atomic_and_drain_reuses_original_delivery_key(tmp_path: Path) -> None:
+    store = RuntimeStore(tmp_path / "runtime.sqlite3")
+    message = "等待出站队列"
+    assert queue_or_send(store, message, dedupe_context="run-123") == "queued_not_configured"
+
+    first = store.claim_telegram_deliveries(
+        claim_token="worker-one", limit=10, max_attempts=3
+    )
+    second = store.claim_telegram_deliveries(
+        claim_token="worker-two", limit=10, max_attempts=3
+    )
+    assert len(first) == 1
+    assert second == []
+
+    with store.connection() as connection:
+        connection.execute(
+            "UPDATE telegram_deliveries SET status = 'failed' WHERE dedupe_key = ?",
+            (first[0]["dedupe_key"],),
+        )
+
+    result = drain_outbox(
+        store,
+        bot_token=VALID_TOKEN,
+        chat_id=VALID_CHAT_ID,
+        transport=lambda *_: b'{"ok":true,"result":{"message_id":7}}',
+    )
+    assert result == {"status": "completed", "claimed": 1, "results": {"sent": 1}}
+    assert store.counts()["telegram_deliveries"] == 1
 
 
 def test_failed_delivery_retries_once_per_invocation(tmp_path: Path) -> None:
