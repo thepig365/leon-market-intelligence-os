@@ -149,6 +149,18 @@ class EvidenceItem(BaseModel):
     confidence: float = Field(ge=0, le=1)
 
 
+class ScoreBreakdown(BaseModel):
+    component_names: list[str]
+    component_inputs: dict[str, float | None]
+    component_weights: dict[str, float]
+    missing_inputs: list[str] = Field(default_factory=list)
+    penalties: dict[str, float] = Field(default_factory=dict)
+    final_score: float = Field(ge=0, le=100)
+    score_version: str
+    evidence_references: list[str] = Field(default_factory=list)
+    calculated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 class DimensionScores(BaseModel):
     quality: float = Field(ge=0, le=100)
     valuation: float = Field(ge=0, le=100)
@@ -156,6 +168,7 @@ class DimensionScores(BaseModel):
     timing: float = Field(ge=0, le=100)
     confidence: float = Field(ge=0, le=1)
     calculation_version: str
+    breakdowns: dict[str, ScoreBreakdown] = Field(default_factory=dict)
 
 
 class ScreenCandidate(BaseModel):
