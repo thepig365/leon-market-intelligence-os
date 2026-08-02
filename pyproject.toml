@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "leon-market-intelligence-os"
-version = "0.2.0"
+version = "1.0.0rc1"
 description = "Evidence-backed market intelligence and decision support for United States equities"
 readme = "README.md"
 requires-python = ">=3.12"

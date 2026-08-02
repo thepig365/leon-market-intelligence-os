@@ -21,8 +21,9 @@ pull request.
 - The database and recovery method are selected and rehearsed.
 - Data-provider rights and usage limits are documented.
 - The runtime and dashboard share an approved private access boundary.
-- Migration `006_supabase_runtime.sql` has been applied to the approved Bayview
-  Supabase project and its RLS/privilege boundary has been verified.
+- Migrations `006_supabase_runtime.sql` through
+  `012_operational_lineage.sql` have been rehearsed on an approved isolated
+  target and schema version 12 plus the RLS/privilege boundary are verified.
 
 ## Required configuration
 
@@ -46,6 +47,9 @@ LMIO_STORE_BACKEND=supabase
 SUPABASE_URL=<approved project URL>
 SUPABASE_SERVICE_ROLE_KEY=<server secret>
 LMIO_READ_API_KEY=<random shared server secret>
+LMIO_ADMIN_API_KEY=<separate random server secret>
+LMIO_RELEASE_SHA=<deployed git commit>
+LMIO_RELEASE_LABEL=LMIO v1.0 RC1 — Ready for Operator Acceptance
 TELEGRAM_BOT_TOKEN=<dedicated private bot token>
 TELEGRAM_CHAT_ID=<approved Leon private chat>
 TELEGRAM_WEBHOOK_SECRET=<random webhook verification secret>
@@ -59,6 +63,7 @@ Dashboard environment:
 ```text
 LMIO_API_BASE_URL=<review or production runtime URL>
 LMIO_READ_API_KEY=<same shared server secret>
+LMIO_ADMIN_API_KEY=<server-only mutation secret>
 NEXT_PUBLIC_SUPABASE_URL=<approved project URL>
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<approved publishable key>
 ```
@@ -67,6 +72,16 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<approved publishable key>
 server. Never expose `SUPABASE_SERVICE_ROLE_KEY`, `LMIO_READ_API_KEY`,
 `LMIO_ADMIN_API_KEY` or provider credentials through a `NEXT_PUBLIC_*`
 variable.
+
+The protected dashboard `/acceptance` route uses the server-only admin key for
+bounded controls and persisted decisions. The browser never receives that key.
+
+## Scheduler deployment
+
+`vercel.json` maps all seven manifest jobs to protected
+`/api/v1/scheduler/{job-id}` routes. Vercel cron uses `CRON_SECRET`; previews do
+not run cron. Keep executor state `configured_not_verified` until protected
+unattended evidence exists.
 
 ## Release gate
 

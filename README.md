@@ -1,5 +1,10 @@
 # Leon Market Intelligence OS
 
+Current release candidate: **LMIO v1.0 RC1 — Ready for Operator Acceptance**.
+See [`docs/FINAL_OPERATIONAL_HANDOVER.md`](docs/FINAL_OPERATIONAL_HANDOVER.md)
+and the protected `/acceptance` dashboard route. This label is not production
+acceptance.
+
 Current status: [`docs/OPERATIONAL_ACCEPTANCE_REPORT.md`](docs/OPERATIONAL_ACCEPTANCE_REPORT.md).
 Code, tests, fixture replay, live data, scheduling and Leon acceptance are
 reported as separate evidence levels.

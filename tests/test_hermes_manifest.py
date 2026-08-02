@@ -27,3 +27,13 @@ def test_scheduler_manifest_maps_every_required_purpose_to_safe_code() -> None:
 
     jobs = load_scheduler_manifest()
     assert all(next_scheduled_time(job).tzinfo is not None for job in jobs)
+
+
+def test_vercel_cron_maps_every_canonical_job_to_protected_executor() -> None:
+    manifest = json.loads(Path("config/scheduler_manifest.json").read_text())
+    vercel = json.loads(Path("vercel.json").read_text())
+
+    expected_paths = {f"/api/v1/scheduler/{job['id']}" for job in manifest["jobs"]}
+    actual_paths = {job["path"] for job in vercel["crons"]}
+
+    assert actual_paths == expected_paths

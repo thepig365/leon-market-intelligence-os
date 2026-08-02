@@ -1,5 +1,8 @@
 # LMIO Operational Acceptance Report
 
+Current release candidate: **LMIO v1.0 RC1 — Ready for Operator Acceptance**.
+This is an engineering/operator-review label, not `Production Accepted`.
+
 Date: 2026-08-02  
 Branch: `codex/lmio-operational-acceptance`  
 Starting commit: `369fa1c29448782eea27cd5f47728ec6e4836227`  

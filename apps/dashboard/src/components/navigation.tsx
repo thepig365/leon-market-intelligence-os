@@ -9,6 +9,7 @@ export function Navigation() {
           {section.label}
         </Link>
       ))}
+      <Link className="acceptanceNav" href="/acceptance">RC1 验收</Link>
     </nav>
   );
 }

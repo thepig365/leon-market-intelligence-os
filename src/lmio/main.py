@@ -19,6 +19,7 @@ from lmio.news_plan import propose_news_plan
 from lmio.news_price import ConfirmationState, NewsPriceConfirmation
 from lmio.plans import ConditionalPlan, PlanState, transition_with_evidence
 from lmio.roles import Principal
+from lmio.scheduler import run_scheduled_job, scheduler_status
 from lmio.security import (
     require_admin,
     require_cron,
@@ -29,6 +30,7 @@ from lmio.security import (
 from lmio.service import LMIOService
 from lmio.telegram import (
     MessageKind,
+    drain_outbox,
     format_symbol_research,
     parse_symbol_query,
     queue_or_send,
@@ -62,10 +64,11 @@ async def require_runtime_read_key(request: Request, call_next: Any) -> Response
     """Keep runtime evidence private while leaving a minimal health probe."""
 
     read_allowed = valid_read_credential(request.headers.get("x-lmio-read-key"))
-    cron_allowed = request.url.path in {
+    cron_path = request.url.path in {
         "/api/v1/providers/finviz/refresh",
         "/api/v1/providers/news/refresh",
-    } and valid_cron_credential(
+    } or request.url.path.startswith("/api/v1/scheduler/")
+    cron_allowed = cron_path and valid_cron_credential(
         request.headers.get("authorization"), request.headers.get("x-lmio-cron-key")
     )
     webhook_path = request.url.path == "/api/v1/telegram/webhook"
@@ -295,6 +298,177 @@ def system_health() -> dict[str, object]:
     return build_system_health(get_service().store, get_settings())
 
 
+def _latest_acceptance_feedback() -> list[dict[str, Any]]:
+    return [
+        item
+        for item in get_service().store.history_json("user_feedback", 200)
+        if str(item.get("subject_type")) == "operator_acceptance"
+    ]
+
+
+@app.get("/api/v1/acceptance", tags=["system"])
+def operator_acceptance() -> dict[str, object]:
+    """Return safe release evidence for the protected operator workspace."""
+
+    service = get_service()
+    settings = get_settings()
+    health = build_system_health(service.store, settings)
+    connection = service.store.connectivity_check()
+    schema = service.store.schema_check()
+    runs = service.store.history_json("pipeline_runs", 10)
+    latest_run = runs[0] if runs else None
+    latest_run_id = str(latest_run.get("run_id")) if latest_run else None
+    stages = [
+        item
+        for item in service.store.history_json("pipeline_stages", 200)
+        if latest_run_id and str(item.get("run_id")) == latest_run_id
+    ]
+    provider_events = service.store.history_json("provider_health", 200)
+    live_success = next(
+        (item for item in provider_events if str(item.get("state")) == "ready"),
+        None,
+    )
+    feedback = _latest_acceptance_feedback()
+    controls = [
+        item
+        for item in service.store.history_json("system_events", 200)
+        if str(item.get("event_type")) == "acceptance_control"
+    ]
+    latest_decision = feedback[0] if feedback else None
+    configured = settings.integration_readiness()
+    unattended = scheduler_status(service.store)
+    return {
+        "release": {
+            "label": settings.release_label,
+            "version": __version__,
+            "sha": settings.release_sha,
+            "environment": settings.environment,
+            "schema_versions": schema.get("schema_versions", []),
+            "required_schema": 12,
+        },
+        "readiness": {
+            "status": health["status"],
+            "database": connection,
+            "latest_pipeline": latest_run,
+            "blockers": health.get("stale_or_unknown", []),
+            "trading": health["safety"],
+        },
+        "evidence_levels": [
+            {"level": "code", "label": "代码已实现", "state": "verified_in_repository"},
+            {
+                "level": "automated",
+                "label": "自动检查",
+                "state": (
+                    "verified_for_recorded_sha"
+                    if settings.release_sha != "unrecorded"
+                    else "awaiting_release_sha"
+                ),
+            },
+            {
+                "level": "configured",
+                "label": "环境已配置",
+                "state": "partially_configured" if any(configured.values()) else "not_configured",
+            },
+            {
+                "level": "live",
+                "label": "真实提供商验证",
+                "state": "verified" if live_success else "awaiting_live_evidence",
+                "checked_at": live_success.get("created_at") if live_success else None,
+            },
+            {
+                "level": "unattended",
+                "label": "无人值守运行",
+                "state": unattended["executor_process"],
+            },
+            {
+                "level": "operator",
+                "label": "Leon 验收",
+                "state": (
+                    latest_decision.get("decision")
+                    if latest_decision
+                    else "awaiting_operator_acceptance"
+                ),
+                "checked_at": latest_decision.get("created_at") if latest_decision else None,
+            },
+        ],
+        "pipeline": {
+            "required_stage_count": 21,
+            "latest_run_id": latest_run_id,
+            "stages": sorted(stages, key=lambda item: int(item.get("stage_order", 0))),
+        },
+        "feedback": feedback[:50],
+        "control_history": controls[:20],
+        "scheduler": unattended,
+        "providers": health["providers"],
+        "freshness": health["freshness"],
+        "synthetic_or_fixture": bool(
+            latest_run
+            and str(dict(latest_run.get("payload") or {}).get("data_mode", ""))
+            not in {"authorised_finviz_api", "operational"}
+        ),
+    }
+
+
+class AcceptanceControlInput(BaseModel):
+    action: str = Field(
+        pattern="^(smoke_test|provider_refresh|manual_pipeline|telegram_drain|health_refresh|scheduler_inspect|backup_status)$"
+    )
+
+
+@app.post("/api/v1/acceptance/control", tags=["system"])
+def acceptance_control(
+    payload: AcceptanceControlInput,
+    principal: Annotated[Principal, Depends(require_admin)],
+) -> dict[str, object]:
+    """Run bounded, non-trading operator checks from the protected dashboard."""
+
+    service = get_service()
+    if payload.action == "smoke_test":
+        result: dict[str, object] = {"health": health_payload(), "ready": ready()}
+    elif payload.action == "provider_refresh":
+        result = _refresh_finviz()
+    elif payload.action == "manual_pipeline":
+        result = service.run_operational_pipeline()
+    elif payload.action == "telegram_drain":
+        result = drain_outbox(
+            service.store,
+            bot_token=service.settings.telegram_bot_token.get_secret_value(),
+            chat_id=service.settings.telegram_chat_id.get_secret_value(),
+        )
+    elif payload.action == "health_refresh":
+        result = build_system_health(service.store, service.settings)
+    elif payload.action == "scheduler_inspect":
+        result = scheduler_status(service.store)
+    else:
+        result = {
+            "backend": service.settings.store_backend,
+            "schema": service.store.schema_check(),
+            "recovery_capability": "verified_primitive",
+            "fresh_backup_required_before_protected_migration": True,
+        }
+    service.store.append_json(
+        "system_events",
+        {
+            "event_type": "acceptance_control",
+            "severity": "completed",
+            "payload": {
+                "action": payload.action,
+                "actor": principal.actor_id,
+                "completed_at": datetime.now(UTC).isoformat(),
+                "trading_action": False,
+            },
+        },
+    )
+    audit_event("acceptance_control_run", action=payload.action, actor=principal.actor_id)
+    return {
+        "action": payload.action,
+        "actor": principal.actor_id,
+        "completed_at": datetime.now(UTC).isoformat(),
+        "result": result,
+        "trading_action": False,
+    }
+
+
 @app.get("/api/v1/providers/health", tags=["system"])
 def providers_health() -> dict[str, Any]:
     readiness = get_settings().integration_readiness()
@@ -438,6 +612,20 @@ def scheduled_official_news_refresh() -> dict[str, object]:
 )
 def manual_official_news_refresh() -> dict[str, object]:
     return _refresh_official_news()
+
+
+@app.get(
+    "/api/v1/scheduler/{job_id}",
+    tags=["system"],
+    dependencies=[Depends(require_cron)],
+)
+def execute_scheduled_job(job_id: str) -> dict[str, object]:
+    """Execute one manifest-declared job with its same-window lock."""
+
+    try:
+        return run_scheduled_job(get_service(), job_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @app.post("/api/v1/demo/run", tags=["research"], dependencies=[Depends(require_admin)])
@@ -709,6 +897,9 @@ class FeedbackInput(BaseModel):
     decision: str = Field(pattern="^(approved|rejected|needs_revision)$")
     reason: str = Field(min_length=1, max_length=1000)
     evidence_urls: list[str] = Field(default_factory=list, max_length=20)
+    verified_identity: str | None = Field(default=None, max_length=200)
+    verified_email: str | None = Field(default=None, max_length=320)
+    verified_role: str | None = Field(default=None, pattern="^(owner|operator|reviewer)$")
 
 
 @app.post(

@@ -9,7 +9,7 @@ def test_health_reports_hard_safety_state() -> None:
     assert health() == {
         "status": "ok",
         "service": "Leon Market Intelligence OS",
-        "version": "0.2.0",
+        "version": "1.0.0rc1",
         "environment": "test",
         "default_language": "zh-CN",
         "market": "US_EQUITIES",
@@ -19,6 +19,8 @@ def test_health_reports_hard_safety_state() -> None:
         "store_backend": "sqlite",
         "insecure_local_reads_enabled": False,
         "demo_mode_enabled": False,
+        "release_sha": "unrecorded",
+        "release_label": "LMIO v1.0 RC1 — Ready for Operator Acceptance",
     }
 
 

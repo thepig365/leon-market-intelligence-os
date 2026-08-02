@@ -90,6 +90,11 @@ class Settings(BaseSettings):
     openai_model: str = Field(default="", validation_alias="LMIO_OPENAI_MODEL")
     admin_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="LMIO_ADMIN_API_KEY")
     owner_identity: str = Field(default="leon", validation_alias="LMIO_OWNER_IDENTITY")
+    release_sha: str = Field(default="unrecorded", validation_alias="LMIO_RELEASE_SHA")
+    release_label: str = Field(
+        default="LMIO v1.0 RC1 — Ready for Operator Acceptance",
+        validation_alias="LMIO_RELEASE_LABEL",
+    )
 
     @model_validator(mode="after")
     def reject_trading_activation(self) -> Self:
@@ -131,6 +136,8 @@ class Settings(BaseSettings):
             "live_trading_enabled": self.live_trading_enabled,
             "paper_trading_enabled": self.paper_trading_enabled,
             "store_backend": self.store_backend,
+            "release_sha": self.release_sha,
+            "release_label": self.release_label,
         }
 
     def integration_readiness(self) -> dict[str, bool]:

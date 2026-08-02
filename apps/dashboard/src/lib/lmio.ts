@@ -58,3 +58,45 @@ export async function readLMIO(endpoint: string | null): Promise<LMIOResult> {
     };
   }
 }
+
+export async function mutateLMIO(
+  endpoint: string,
+  body: Record<string, unknown>,
+): Promise<LMIOResult> {
+  const checkedAt = new Date().toISOString();
+  const adminKey = process.env.LMIO_ADMIN_API_KEY?.trim();
+  if (!adminKey) {
+    return {
+      state: "unavailable",
+      message: "受保护操作尚未配置；没有任何资料被更改。",
+      checkedAt,
+    };
+  }
+  try {
+    const response = await fetch(`${apiBaseUrl()}${endpoint}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        ...(await runtimeHeaders()),
+        "Content-Type": "application/json",
+        "x-lmio-key": adminKey,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) {
+      return {
+        state: "unavailable",
+        message: `受保护操作未完成（${response.status}）；旧资料保持不变。`,
+        checkedAt,
+      };
+    }
+    return { state: "ready", data: await response.json(), checkedAt };
+  } catch {
+    return {
+      state: "unavailable",
+      message: "运行服务当前不可访问；旧资料保持不变。",
+      checkedAt,
+    };
+  }
+}

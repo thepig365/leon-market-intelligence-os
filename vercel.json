@@ -1,12 +1,32 @@
 {
   "crons": [
     {
-      "path": "/api/v1/providers/finviz/refresh",
-      "schedule": "45 12 * * 1-5"
+      "path": "/api/v1/scheduler/premarket-data-screening",
+      "schedule": "0 12 * * 1-5"
     },
     {
-      "path": "/api/v1/providers/news/refresh",
-      "schedule": "15 13 * * 1-5"
+      "path": "/api/v1/scheduler/after-open-finviz-refresh",
+      "schedule": "45 15 * * 1-5"
+    },
+    {
+      "path": "/api/v1/scheduler/after-close-outcomes-report",
+      "schedule": "30 21 * * 1-5"
+    },
+    {
+      "path": "/api/v1/scheduler/official-news-refresh",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/v1/scheduler/sec-refresh",
+      "schedule": "0 22 * * 1-5"
+    },
+    {
+      "path": "/api/v1/scheduler/telegram-outbox-drain",
+      "schedule": "15 0 * * *"
+    },
+    {
+      "path": "/api/v1/scheduler/weekend-strategy-data-quality-review",
+      "schedule": "0 14 * * 6"
     }
   ]
 }

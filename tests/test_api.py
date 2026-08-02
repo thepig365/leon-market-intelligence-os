@@ -414,6 +414,76 @@ def test_feedback_write_is_protected() -> None:
     assert response.status_code == 503
 
 
+def test_acceptance_summary_separates_six_evidence_levels(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "runtime.sqlite3",
+        release_sha="test-release-sha",
+    )
+    service = LMIOService(settings)
+    monkeypatch.setattr("lmio.main.get_service", lambda: service)
+    monkeypatch.setattr("lmio.main.get_settings", lambda: settings)
+
+    response = request("GET", "/api/v1/acceptance")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["release"]["sha"] == "test-release-sha"
+    assert [item["level"] for item in body["evidence_levels"]] == [
+        "code",
+        "automated",
+        "configured",
+        "live",
+        "unattended",
+        "operator",
+    ]
+    assert body["pipeline"]["required_stage_count"] == 21
+    assert body["readiness"]["trading"]["CAN_TRADE"] is False
+
+
+def test_acceptance_control_is_admin_protected() -> None:
+    response = request(
+        "POST",
+        "/api/v1/acceptance/control",
+        json={"action": "health_refresh"},
+    )
+
+    assert response.status_code == 503
+
+
+def test_acceptance_health_control_records_non_trading_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "runtime.sqlite3",
+        admin_api_key="admin-secret",
+        owner_identity="leon-owner",
+    )
+    service = LMIOService(settings)
+    monkeypatch.setattr("lmio.main.get_service", lambda: service)
+    monkeypatch.setattr("lmio.security.get_settings", lambda: settings)
+
+    response = request(
+        "POST",
+        "/api/v1/acceptance/control",
+        headers={"x-lmio-key": "admin-secret"},
+        json={"action": "health_refresh"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["actor"] == "leon-owner"
+    assert response.json()["trading_action"] is False
+    history = service.store.history_json("system_events")
+    assert history[0]["event_type"] == "acceptance_control"
+    assert history[0]["payload"]["action"] == "health_refresh"
+    assert history[0]["payload"]["trading_action"] is False
+
+
 def test_watchlist_history_binds_actor_to_authenticated_principal(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

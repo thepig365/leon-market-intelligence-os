@@ -36,6 +36,14 @@ const publicAudit = await readFile(
   "utf8",
 );
 const home = await readFile(new URL("../src/app/page.tsx", import.meta.url), "utf8");
+const acceptance = await readFile(
+  new URL("../src/app/acceptance/page.tsx", import.meta.url),
+  "utf8",
+);
+const acceptanceActions = await readFile(
+  new URL("../src/app/acceptance/actions.ts", import.meta.url),
+  "utf8",
+);
 
 const expected = [
   "command-centre",
@@ -85,6 +93,20 @@ for (const forbidden of ["LMIO_READ_KEY", "SUPABASE_SERVICE_ROLE_KEY", "FINVIZ_A
 }
 if (!appShell.includes("不执行交易")) {
   throw new Error("Dashboard must display the no-trading boundary.");
+}
+for (const required of [
+  "/api/v1/acceptance",
+  "六级证据",
+  "21-STAGE INSPECTOR",
+  "operator_acceptance",
+  "模拟或测试资料",
+]) {
+  if (!acceptance.includes(required) && !acceptanceActions.includes(required)) {
+    throw new Error(`Missing protected operator acceptance control: ${required}`);
+  }
+}
+if (!acceptanceActions.includes("authorisedOperator") || !acceptanceActions.includes("mutateLMIO")) {
+  throw new Error("Acceptance mutations must enforce identity and remain server-side.");
 }
 for (const claim of ["private_beta_access", 'app.status !== "active"', "owner", "operator", "reviewer"]) {
   if (!identity.includes(claim)) {
