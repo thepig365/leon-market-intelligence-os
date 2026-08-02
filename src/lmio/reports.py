@@ -11,6 +11,8 @@ from lmio.domain import (
     Strategy,
     ValuationResult,
 )
+from lmio.research import ResearchPack
+from lmio.top3 import evaluate_top3
 
 
 def classify_regime(
@@ -155,6 +157,7 @@ def build_daily_report(
     *,
     data_mode: str,
     valuations: dict[str, ValuationResult] | None = None,
+    research_packs: dict[str, ResearchPack] | None = None,
     provenance: DataProvenance = DataProvenance.TEST_FIXTURE,
 ) -> DailyReport:
     valuation_map = valuations or {}
@@ -172,13 +175,7 @@ def build_daily_report(
         for item in _dedupe_symbols(candidates)
     ]
     top_10 = ranked[:10]
-    top_3 = [
-        item
-        for item in top_10
-        if item.scores.confidence >= 0.75
-        and item.total_score >= 65
-        and item.symbol in valuation_map
-    ][:3]
+    top_3, top_3_status = evaluate_top3(top_10, valuation_map, research_packs or {})
     decision_cards = [
         DecisionCard(
             symbol=item.symbol,
@@ -245,6 +242,7 @@ def build_daily_report(
         },
         top_10=top_10,
         top_3=top_3,
+        top_3_status=top_3_status,
         decision_cards=decision_cards,
         message_zh="\n".join(lines),
         warnings=warnings,

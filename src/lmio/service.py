@@ -19,7 +19,7 @@ from lmio.providers.finviz_api import FinvizAPIProvider
 from lmio.providers.official_rss import OfficialRSSProvider
 from lmio.providers.sec import SECProvider
 from lmio.reports import build_daily_report, classify_regime, unverified_regime
-from lmio.research import build_research_pack
+from lmio.research import ResearchPack, build_research_pack
 from lmio.screens import run_core_screens
 from lmio.sec_monitor import monitor_sec
 from lmio.store import RuntimeStore
@@ -230,6 +230,7 @@ class LMIOService:
         *,
         data_mode: str,
         valuations: dict[str, ValuationResult] | None = None,
+        research_packs: dict[str, ResearchPack] | None = None,
     ) -> dict[str, object]:
         if not snapshots:
             raise ValueError("A daily run requires at least one snapshot")
@@ -259,6 +260,7 @@ class LMIOService:
             regime=regime,
             data_mode=data_mode,
             valuations=valuations,
+            research_packs=research_packs,
             provenance=provenance,
         )
         report_payload = report.model_dump(mode="json")
@@ -355,6 +357,15 @@ class LMIOService:
                 "payload": [item.model_dump(mode="json") for item in candidates],
             },
         )
+        for evaluation in report.top_3_status.evaluations:
+            self.store.append_json(
+                "top3_evaluations",
+                {
+                    "symbol": evaluation.symbol,
+                    "state": evaluation.state,
+                    "payload": evaluation.model_dump(mode="json"),
+                },
+            )
         self.store.append_json(
             "reports",
             {"report_type": "daily", "payload": report_payload},

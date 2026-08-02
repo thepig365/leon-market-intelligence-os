@@ -82,6 +82,17 @@ class CandidateState(StrEnum):
     PRIORITY = "confirmed"
 
 
+class Top3EligibilityState(StrEnum):
+    SCREENED = "screened"
+    RESEARCH_PENDING = "research_pending"
+    VALUATION_PENDING = "valuation_pending"
+    EVIDENCE_INCOMPLETE = "evidence_incomplete"
+    TOP3_ELIGIBLE = "top3_eligible"
+    TOP3_SELECTED = "top3_selected"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+
+
 class SecuritySnapshot(BaseModel):
     """Normalised point-in-time equity facts used by V1 screens."""
 
@@ -163,7 +174,34 @@ class ScreenCandidate(BaseModel):
     horizon: str
     evidence: list[EvidenceItem]
     missing_fields: list[str] = Field(default_factory=list)
+    source_completeness: float = Field(default=0, ge=0, le=1)
     pattern: PatternSignal | None = None
+
+
+class Top3Evaluation(BaseModel):
+    symbol: str
+    strategy: Strategy
+    state: Top3EligibilityState
+    strategy_match: bool
+    scores: DimensionScores
+    data_confidence: float = Field(ge=0, le=1)
+    source_completeness: float = Field(ge=0, le=1)
+    valuation_applicability: str
+    research_completeness: float = Field(ge=0, le=1)
+    catalyst: str
+    supporting_evidence: list[str]
+    contrary_evidence: list[str]
+    next_confirmation: str
+    invalidation_conditions: str
+    blocked_reasons: list[str] = Field(default_factory=list)
+
+
+class Top3Status(BaseModel):
+    available: bool
+    message: str
+    reason_counts: dict[str, int] = Field(default_factory=dict)
+    next_required_actions: list[str] = Field(default_factory=list)
+    evaluations: list[Top3Evaluation] = Field(default_factory=list)
 
 
 class CandidateTransition(BaseModel):
@@ -289,6 +327,7 @@ class DailyReport(BaseModel):
     funnel: dict[str, int]
     top_10: list[ScreenCandidate]
     top_3: list[ScreenCandidate]
+    top_3_status: Top3Status
     decision_cards: list[DecisionCard] = Field(default_factory=list)
     message_zh: str
     qualified_trade_plans: int = 0

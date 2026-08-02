@@ -192,6 +192,7 @@ def run_core_screens(items: list[SecuritySnapshot]) -> list[ScreenCandidate]:
                     horizon="中期" if strategy is Strategy.QUALITY_GROWTH_MOMENTUM else "短至中期",
                     evidence=evidence,
                     missing_fields=missing_fields(item),
+                    source_completeness=item.data_completeness,
                     pattern=pattern,
                 )
             )

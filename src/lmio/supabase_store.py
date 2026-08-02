@@ -30,6 +30,7 @@ RECORD_KINDS = {
     "strategy_performance",
     "watchlists",
     "watchlist_members",
+    "top3_evaluations",
 }
 
 LATEST_KINDS = {"universe_runs", "screen_runs", "reports"}
@@ -56,6 +57,7 @@ COUNT_KINDS = (
     "strategy_performance",
     "watchlists",
     "watchlist_members",
+    "top3_evaluations",
 )
 
 

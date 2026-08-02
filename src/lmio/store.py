@@ -58,6 +58,13 @@ CREATE TABLE IF NOT EXISTS synthetic_records (
     payload TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS top3_evaluations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    state TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS signal_outcomes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol TEXT NOT NULL,
@@ -477,6 +484,7 @@ class RuntimeStore:
             "watchlists",
             "watchlist_members",
             "synthetic_records",
+            "top3_evaluations",
         }
         if table not in allowed:
             raise ValueError(f"unsupported append table: {table}")
@@ -542,6 +550,7 @@ class RuntimeStore:
             "watchlists",
             "watchlist_members",
             "synthetic_records",
+            "top3_evaluations",
         }
         if table not in allowed:
             raise ValueError(f"unsupported history table: {table}")
@@ -584,6 +593,7 @@ class RuntimeStore:
             "watchlists",
             "watchlist_members",
             "synthetic_records",
+            "top3_evaluations",
         )
         with self.connection() as connection:
             return {

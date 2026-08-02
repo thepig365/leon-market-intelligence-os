@@ -46,9 +46,7 @@ def test_synthetic_daily_run_is_isolated_and_reproducible(tmp_path: Path) -> Non
 def test_daily_run_rejects_mixed_provenance(tmp_path: Path) -> None:
     service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
     snapshots = authorised_snapshots()
-    snapshots[0] = snapshots[0].model_copy(
-        update={"provenance": DataProvenance.SYNTHETIC_REPLAY}
-    )
+    snapshots[0] = snapshots[0].model_copy(update={"provenance": DataProvenance.SYNTHETIC_REPLAY})
 
     with pytest.raises(ValueError, match="cannot mix provenance"):
         service.run_daily(snapshots, data_mode="invalid_mixed_input")
@@ -83,12 +81,16 @@ def test_authorised_snapshot_never_reuses_synthetic_market_regime(tmp_path: Path
     assert report["provenance"] == "historical_authorised"
     assert report["regime"]["confidence"] == 0
     assert report["regime"]["manual_review_required"] is True
+    assert report["top_3"] == []
+    assert report["top_3_status"]["available"] is False
+    assert report["top_3_status"]["reason_counts"]["missing authorised valuation inputs"] > 0
     assert report["warnings"] == [
         "当前使用授权导出快照，不是持续实时数据流；市场状态与估值仍需独立验证。"
     ]
     assert "SPY +0.70%" not in str(report)
     assert synthetic["regime"]["label"] == "Risk-On"
     assert service.store.counts()["reports"] == 1
+    assert service.store.counts()["top3_evaluations"] > 0
     assert service.store.counts()["synthetic_records"] == 1
 
 

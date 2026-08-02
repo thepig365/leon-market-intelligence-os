@@ -2,12 +2,13 @@
 
 from pydantic import BaseModel, Field
 
-from lmio.domain import NewsEvent, ScreenCandidate, ValuationResult
+from lmio.domain import DataProvenance, NewsEvent, ScreenCandidate, ValuationResult
 from lmio.news import news_impact_score
 
 
 class ResearchPack(BaseModel):
     symbol: str
+    provenance: DataProvenance = DataProvenance.TEST_FIXTURE
     company_profile: str
     what_changed: str
     why_now: str
@@ -66,6 +67,7 @@ def build_research_pack(
     }
     return ResearchPack(
         symbol=candidate.symbol,
+        provenance=candidate.provenance,
         company_profile=f"{candidate.company} ({candidate.symbol})",
         what_changed=candidate.catalyst,
         why_now=candidate.next_confirmation,
