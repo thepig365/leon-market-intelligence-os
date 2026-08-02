@@ -1,5 +1,8 @@
 # LMIO Completion Audit
 
+> Historical implementation audit. Read with `OPERATIONAL_ACCEPTANCE_REPORT.md`;
+> no code or build claim proves live or scheduled operation.
+
 This audit records the difference between offline product completion and
 operational activation. A pending external gate is never represented as
 working evidence.

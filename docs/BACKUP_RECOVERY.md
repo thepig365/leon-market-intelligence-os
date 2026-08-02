@@ -1,5 +1,8 @@
 # Backup and Recovery
 
+Connectivity, schema, RLS, counts, referential integrity, export and restore
+rehearsal are separate checks. LMIO does not claim point-in-time recovery.
+
 SQLite is the local development procedure. Production uses the approved
 Supabase project and must follow the managed export/recovery procedure below.
 

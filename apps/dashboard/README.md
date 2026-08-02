@@ -1,5 +1,8 @@
 # LMIO Dashboard
 
+The first screen uses the operating command-centre API. Non-operational data is
+visibly watermarked; code, fixture and live states are not conflated.
+
 Chinese-first, read-only Next.js dashboard for Leon Market Intelligence OS.
 It implements the 13 dashboard areas required by the governing specification
 and reads versioned evidence from the LMIO FastAPI runtime.

@@ -1,5 +1,8 @@
 # Protected Deployment Guide
 
+> Readiness is not deployment evidence. Production migrations, scheduler
+> activation and smoke tests remain separately approved gates.
+
 LMIO uses two private Vercel projects sourced from the same repository:
 
 1. repository root: FastAPI runtime through `api/index.py`;

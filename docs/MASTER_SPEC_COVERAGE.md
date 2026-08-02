@@ -1,5 +1,8 @@
 # LMIO Master Spec Coverage
 
+> Coverage means code and deterministic evidence unless a row names a redacted
+> live run. See `OPERATIONAL_ACCEPTANCE_REPORT.md` for the six-level verdict.
+
 This matrix is the implementation map for the governing
 `LEON_MARKET_INTELLIGENCE_OS_MASTER_SPEC.md`. “Implemented” means the capability
 has deterministic code and local automated evidence. It does not imply that an
@@ -57,7 +60,7 @@ external provider or protected production environment has been activated.
 | Supporting/contrary evidence and strategy controls | Implemented | `MarketRegime` |
 | 13 dashboard routes | Implemented | `apps/dashboard`, dashboard verification and build |
 | Runtime APIs for reports, screens, valuations, candidates, research, news, ownership, plans, signals, performance, watchlists | Implemented | `main.py` |
-| Continuous, premarket, after-open, after-close, weekend jobs | Defined and read-only | `config/hermes_jobs.json` |
+| Premarket, after-open, after-close, news, SEC, Telegram drain and weekend jobs | Executable and fixture-tested; scheduled live evidence pending | `config/scheduler_manifest.json`, `src/lmio/scheduler.py` |
 | Telegram grouping, dedupe, rate-limit, queued release and bounded retry | Implemented | `telegram.py`, schema v5, tests |
 | Telegram live delivery | Verified privately on 2026-07-31 | One Chinese non-trading alert sent; one attempt; identical repeat deduplicated; secrets remain Keychain-only |
 | Live market/fundamental/revision provider | Pending approved provider/export | external gate |

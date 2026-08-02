@@ -1,5 +1,8 @@
 # LMIO V1 Security Review
 
+> Local automated controls pass. Protected Supabase RLS and production endpoint
+> checks remain external gates and are not inferred from code.
+
 Reviewed: 2026-07-31
 Scope: protected review deployment architecture at the draft-review branch
 

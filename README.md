@@ -1,5 +1,9 @@
 # Leon Market Intelligence OS
 
+Current status: [`docs/OPERATIONAL_ACCEPTANCE_REPORT.md`](docs/OPERATIONAL_ACCEPTANCE_REPORT.md).
+Code, tests, fixture replay, live data, scheduling and Leon acceptance are
+reported as separate evidence levels.
+
 LMIO is a Chinese-first, evidence-backed research and decision-support runtime
 for United States equities. It ranks research candidates, preserves their
 evidence, calculates three distinct valuation perspectives, produces quiet

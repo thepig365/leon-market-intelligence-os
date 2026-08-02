@@ -1,5 +1,9 @@
 # LMIO V1 Operations Manual
 
+Operational claims require stored run evidence. A build or fixture replay is
+not a successful scheduled market-data run. Canonical jobs live in
+`config/scheduler_manifest.json` and execute through `lmio scheduled-job`.
+
 ## Operating boundary
 
 LMIO V1 is read-only market intelligence and decision support. It has no broker

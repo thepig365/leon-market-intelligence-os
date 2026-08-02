@@ -1,5 +1,9 @@
 # LMIO V1 Acceptance Record
 
+> **Status 2026-08-02:** implementation evidence only, not operational
+> acceptance. See `OPERATIONAL_ACCEPTANCE_REPORT.md`; real refresh, protected
+> smoke tests, three trading days and Leon acceptance remain pending.
+
 This record maps the governing Master Specification Definition of Done to
 implemented evidence. It distinguishes deterministic product completion from
 external integrations that require credentials or a successful live read.
