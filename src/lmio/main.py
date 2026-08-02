@@ -12,6 +12,7 @@ from lmio import __version__
 from lmio.audit import audit_event
 from lmio.config import get_settings
 from lmio.domain import NewsEvent
+from lmio.health_console import build_system_health
 from lmio.news import news_impact_score
 from lmio.news_plan import ReactionEvidence, propose_news_plan
 from lmio.plans import ConditionalPlan, PlanState, transition_with_evidence
@@ -245,6 +246,7 @@ def ready() -> dict[str, Any]:
     )
     payload["latest_provider"] = latest_provider
     payload["store"] = {"status": "ready", "counts": service.store.counts()}
+    payload["operational_health"] = build_system_health(service.store, settings)
     audit_event("readiness_checked", environment=payload["environment"])
     return payload
 
@@ -252,6 +254,11 @@ def ready() -> dict[str, Any]:
 @app.get("/api/status", tags=["system"])
 def api_status() -> dict[str, Any]:
     return ready()
+
+
+@app.get("/api/v1/system-health", tags=["system"])
+def system_health() -> dict[str, object]:
+    return build_system_health(get_service().store, get_settings())
 
 
 @app.get("/api/v1/providers/health", tags=["system"])
