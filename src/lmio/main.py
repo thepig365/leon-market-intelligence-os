@@ -341,7 +341,7 @@ def operator_acceptance() -> dict[str, object]:
         "release": {
             "label": settings.release_label,
             "version": __version__,
-            "sha": settings.release_sha,
+            "sha": settings.resolved_release_sha,
             "environment": settings.environment,
             "schema_versions": schema.get("schema_versions", []),
             "required_schema": 12,
@@ -360,7 +360,7 @@ def operator_acceptance() -> dict[str, object]:
                 "label": "自动检查",
                 "state": (
                     "verified_for_recorded_sha"
-                    if settings.release_sha != "unrecorded"
+                    if settings.resolved_release_sha != "unrecorded"
                     else "awaiting_release_sha"
                 ),
             },

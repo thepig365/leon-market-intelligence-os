@@ -26,6 +26,14 @@ Release label: **LMIO v1.0 RC1 — Ready for Operator Acceptance**
 - independent re-review;
 - separate merge and production deployment approval.
 
+## Protected review deployment
+
+- dashboard preview reached `READY` at
+  `https://lmio-dashboard-review-7ayrfq4j4-leons-projects-1ac79fbd.vercel.app`;
+- the protected sign-in response and search-exclusion metadata were verified;
+- signed-in desktop and mobile operator acceptance remains outstanding;
+- no production deployment was performed.
+
 ## Current conclusion
 
 RC1 is an operator-acceptance candidate, not a production-accepted release.

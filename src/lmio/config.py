@@ -91,6 +91,7 @@ class Settings(BaseSettings):
     admin_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="LMIO_ADMIN_API_KEY")
     owner_identity: str = Field(default="leon", validation_alias="LMIO_OWNER_IDENTITY")
     release_sha: str = Field(default="unrecorded", validation_alias="LMIO_RELEASE_SHA")
+    vercel_git_commit_sha: str = Field(default="", validation_alias="VERCEL_GIT_COMMIT_SHA")
     release_label: str = Field(
         default="LMIO v1.0 RC1 — Ready for Operator Acceptance",
         validation_alias="LMIO_RELEASE_LABEL",
@@ -136,9 +137,17 @@ class Settings(BaseSettings):
             "live_trading_enabled": self.live_trading_enabled,
             "paper_trading_enabled": self.paper_trading_enabled,
             "store_backend": self.store_backend,
-            "release_sha": self.release_sha,
+            "release_sha": self.resolved_release_sha,
             "release_label": self.release_label,
         }
+
+    @property
+    def resolved_release_sha(self) -> str:
+        """Prefer an explicit release SHA, then Vercel's immutable deployment SHA."""
+
+        if self.release_sha.strip() and self.release_sha != "unrecorded":
+            return self.release_sha.strip()
+        return self.vercel_git_commit_sha.strip() or "unrecorded"
 
     def integration_readiness(self) -> dict[str, bool]:
         return {

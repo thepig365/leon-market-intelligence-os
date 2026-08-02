@@ -17,12 +17,12 @@ Freeze scope: PR #4 only; no new strategy, provider, stage or trading scope.
 |---|---|
 | Ruff lint | Pass |
 | Ruff formatting | Pass |
-| Python tests | Pass: 214 tests after RC1 acceptance and scheduler additions |
+| Python tests | Pass: 216 tests after RC1 acceptance, scheduler and release identity additions |
 | Dashboard lint | Pass |
 | Dashboard type check | Pass |
 | Dashboard contract test | Pass: 13 governed sections plus protected acceptance controls |
 | Dashboard production build | Pass: 20 pages including `/acceptance` |
-| Git whitespace check | Pending final diff |
+| Git whitespace check | Pass |
 | Python dependency audit | Pass: no known vulnerabilities |
 | npm production audit | Pass: zero vulnerabilities |
 
