@@ -6,7 +6,7 @@
   "status": "draft_external_gates_pending",
   "evidence_levels": {
     "code": "complete_for_approved_scope",
-    "automated_tests": "passed_locally_210_tests_ci_pending_current_head",
+    "automated_tests": "passed_locally_210_tests_and_github_actions_run_30729536942",
     "fixture_replay": "passed",
     "real_authorised_data": "pending_new_redacted_run",
     "scheduled_execution": "pending_three_us_trading_days",
@@ -28,6 +28,12 @@
   "stage_22_resolution": "removed_from_executable_pipeline_planned_external_governance_integration",
   "signal_stage": "signal_eligibility_check_with_separate_authenticated_operator_creation",
   "scheduler_executor_process": "not_verified",
+  "github_actions": {
+    "run_id": 30729536942,
+    "run_number": 22,
+    "verified_commit": "f2e7972df7049b0f79a0e35a97cf6120ba1b5d39",
+    "conclusion": "success"
+  },
   "trading": {
     "can_trade": false,
     "live_trading_enabled": false,
