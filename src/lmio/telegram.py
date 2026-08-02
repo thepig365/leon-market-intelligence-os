@@ -89,8 +89,9 @@ def _persist_delivery(
     )
 
 
-def message_key(message: str) -> str:
-    return hashlib.sha256(message.strip().encode()).hexdigest()
+def message_key(message: str, context: str = "") -> str:
+    material = f"{context.strip()}|{message.strip()}"
+    return hashlib.sha256(material.encode()).hexdigest()
 
 
 def _default_transport(url: str, body: bytes, timeout: float, max_bytes: int) -> bytes:
@@ -174,10 +175,11 @@ def queue_or_send(
     max_per_hour: int = 6,
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     transport: TelegramTransport | None = None,
+    dedupe_context: str = "",
 ) -> str:
     """Queue safely, or make one bounded delivery attempt per invocation."""
 
-    key = message_key(message)
+    key = message_key(message, dedupe_context)
     store.migrate()
     existing = store.telegram_delivery(key)
     if existing and existing["status"] == "sent":

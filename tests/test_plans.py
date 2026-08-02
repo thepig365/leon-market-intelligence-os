@@ -27,8 +27,8 @@ def test_valid_plan_transitions_are_explicit() -> None:
 
     assert watching.state is PlanState.WAITING_CONFIRMATION
 
-    with pytest.raises(PermissionError, match="paper trading is disabled"):
-        transition(watching, PlanState.CONFIRMED)
+    ready = transition(watching, PlanState.CONFIRMED)
+    assert ready.state is PlanState.PLAN_READY
 
 
 def test_transition_records_actor_reason_and_evidence() -> None:

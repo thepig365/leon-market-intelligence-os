@@ -233,8 +233,8 @@ class LMIOService:
             delivery = queue_or_send(
                 self.store,
                 str(report["message_zh"]),
-                bot_token=self.settings.telegram_bot_token,
-                chat_id=self.settings.telegram_chat_id,
+                bot_token=self.settings.telegram_bot_token.get_secret_value(),
+                chat_id=self.settings.telegram_chat_id.get_secret_value(),
                 kind=MessageKind.PREMARKET,
             )
             context["telegram"] = delivery
@@ -323,8 +323,8 @@ class LMIOService:
         delivery = queue_or_send(
             self.store,
             str(report["message_zh"]),
-            bot_token=self.settings.telegram_bot_token,
-            chat_id=self.settings.telegram_chat_id,
+            bot_token=self.settings.telegram_bot_token.get_secret_value(),
+            chat_id=self.settings.telegram_chat_id.get_secret_value(),
             kind=message_kind,
         )
         return {

@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 from html import escape
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -15,6 +15,7 @@ from lmio.domain import NewsEvent
 from lmio.news import news_impact_score
 from lmio.news_plan import ReactionEvidence, propose_news_plan
 from lmio.plans import ConditionalPlan, PlanState, transition_with_evidence
+from lmio.roles import Principal
 from lmio.security import (
     require_admin,
     require_cron,
@@ -116,7 +117,7 @@ async def telegram_webhook(request: Request) -> dict[str, str]:
     text = message.get("text")
     if (
         not isinstance(chat, dict)
-        or str(chat.get("id", "")) != settings.telegram_chat_id
+        or str(chat.get("id", "")) != settings.telegram_chat_id.get_secret_value()
         or not isinstance(text, str)
     ):
         return {"status": "ignored"}
@@ -128,7 +129,7 @@ async def telegram_webhook(request: Request) -> dict[str, str]:
                 "LMIO 查询帮助",
                 "直接发送股票代码，例如：SNDK",
                 "也可以发送：/quote SNDK",
-                "发送 /status 查看 Finviz 连接状态。",
+                "命令：/status /health /top3 /top10 /news /help",
                 "系统只提供研究信息，不会执行交易。",
             )
         )
@@ -144,6 +145,53 @@ async def telegram_webhook(request: Request) -> dict[str, str]:
                     f"最近检查：{latest['created_at']}",
                     "仅供研究与决策支持；不会执行交易。",
                 )
+            )
+    elif normalised.lower() == "/health":
+        counts = get_service().store.counts()
+        latest_run = get_service().store.history_json("pipeline_runs", 1)
+        pipeline = latest_run[0] if latest_run else None
+        response = "\n".join(
+            (
+                "LMIO · 系统健康",
+                f"数据库：{get_service().store.connectivity_check()['status']}",
+                f"流水线：{pipeline['status'] if pipeline else '尚无运行'}",
+                f"报告记录：{counts.get('reports', 0)}",
+                "交易能力：关闭（实盘与模拟均关闭）",
+                "仅供研究与决策支持；不会执行交易。",
+            )
+        )
+    elif normalised.lower() in {"/top3", "/top10"}:
+        report = get_service().store.latest_json("reports") or {}
+        key = "top_3" if normalised.lower() == "/top3" else "top_10"
+        candidates = list(report.get(key) or [])
+        title = "今日 Top 3" if key == "top_3" else "今日 Top 10"
+        if not candidates:
+            status = dict(report.get("top_3_status") or {})
+            response = f"LMIO · {title}\n当前不可用：{status.get('message', '尚无合格候选。')}"
+        else:
+            lines = [
+                f"{index}. {item['symbol']} · {float(item['total_score']):.1f} · "
+                f"{item['strategy']}"
+                for index, item in enumerate(candidates, start=1)
+            ]
+            response = "\n".join(
+                [f"LMIO · {title}", *lines, "数据若已过期会在候选详情中标明。"]
+            )
+    elif normalised.lower() == "/news":
+        events = get_service().latest_news(limit=5)
+        if not events:
+            response = "LMIO · 重要新闻\n尚无已验证的官方新闻记录。"
+        else:
+            response = "\n".join(
+                [
+                    "LMIO · 重要新闻",
+                    *[
+                        f"- {item['headline']} · {item['source']} · "
+                        f"{item['published_at']}"
+                        for item in events
+                    ],
+                    "新闻只触发研究，必须由价格确认。",
+                ]
             )
     else:
         symbol = parse_symbol_query(normalised)
@@ -164,10 +212,11 @@ async def telegram_webhook(request: Request) -> dict[str, str]:
     delivery = queue_or_send(
         get_service().store,
         response,
-        bot_token=settings.telegram_bot_token,
-        chat_id=settings.telegram_chat_id,
+        bot_token=settings.telegram_bot_token.get_secret_value(),
+        chat_id=settings.telegram_chat_id.get_secret_value(),
         kind=MessageKind.IMMEDIATE_ALERT,
         max_per_hour=30,
+        dedupe_context=f"telegram-update:{payload.get('update_id', 'unknown')}",
     )
     audit_event("telegram_query_processed", delivery=delivery)
     return {"status": "accepted", "delivery": delivery}
@@ -478,11 +527,89 @@ def watchlist_history(limit: int = 50) -> list[dict[str, Any]]:
     return get_service().store.history_json("watchlists", limit)
 
 
+class WatchlistInput(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    reason: str = Field(min_length=1, max_length=1000)
+    evidence_urls: list[str] = Field(default_factory=list, max_length=20)
+
+
+class WatchlistMemberInput(BaseModel):
+    symbol: str = Field(pattern=r"^[A-Za-z][A-Za-z0-9.-]{0,9}$")
+    action: str = Field(pattern="^(add|remove)$")
+    reason: str = Field(min_length=1, max_length=1000)
+    evidence_urls: list[str] = Field(default_factory=list, max_length=20)
+
+
+@app.post("/api/v1/watchlists", tags=["research"])
+def create_watchlist(
+    payload: WatchlistInput,
+    principal: Annotated[Principal, Depends(require_admin)],
+) -> dict[str, Any]:
+    prior = [
+        item
+        for item in get_service().store.history_json("watchlists", 200)
+        if str(item.get("name", "")).casefold() == payload.name.casefold()
+    ]
+    version = len(prior) + 1
+    record = {
+        **payload.model_dump(mode="json"),
+        "actor": principal.actor_id,
+        "role": principal.role,
+        "version": version,
+        "action": "created",
+    }
+    record_id = get_service().store.append_json(
+        "watchlists", {"name": payload.name, "payload": record}
+    )
+    return {"id": record_id, "version": version, "status": "created"}
+
+
+@app.post("/api/v1/watchlists/{watchlist_id}/members", tags=["research"])
+def change_watchlist_member(
+    watchlist_id: int,
+    payload: WatchlistMemberInput,
+    principal: Annotated[Principal, Depends(require_admin)],
+) -> dict[str, Any]:
+    parent = next(
+        (
+            item
+            for item in get_service().store.history_json("watchlists", 200)
+            if int(item["id"]) == watchlist_id
+        ),
+        None,
+    )
+    if parent is None:
+        raise HTTPException(status_code=404, detail="Watchlist not found.")
+    prior = [
+        item
+        for item in get_service().store.history_json("watchlist_members", 200)
+        if int(item.get("watchlist_id", -1)) == watchlist_id
+        and str(item.get("symbol", "")).upper() == payload.symbol.upper()
+    ]
+    version = len(prior) + 1
+    record = {
+        **payload.model_dump(mode="json"),
+        "symbol": payload.symbol.upper(),
+        "actor": principal.actor_id,
+        "role": principal.role,
+        "version": version,
+        "watchlist_name": parent["name"],
+    }
+    record_id = get_service().store.append_json(
+        "watchlist_members",
+        {
+            "watchlist_id": watchlist_id,
+            "symbol": payload.symbol.upper(),
+            "payload": record,
+        },
+    )
+    return {"id": record_id, "version": version, "status": payload.action}
+
+
 class FeedbackInput(BaseModel):
     subject_type: str = Field(min_length=1, max_length=80)
     subject_id: str = Field(min_length=1, max_length=120)
     decision: str = Field(pattern="^(approved|rejected|needs_revision)$")
-    actor: str = Field(min_length=1, max_length=120)
     reason: str = Field(min_length=1, max_length=1000)
     evidence_urls: list[str] = Field(default_factory=list, max_length=20)
 
@@ -492,7 +619,10 @@ class FeedbackInput(BaseModel):
     tags=["research"],
     dependencies=[Depends(require_admin)],
 )
-def record_feedback(payload: FeedbackInput) -> dict[str, Any]:
+def record_feedback(
+    payload: FeedbackInput,
+    principal: Annotated[Principal, Depends(require_admin)],
+) -> dict[str, Any]:
     record = payload.model_dump(mode="json")
     record_id = get_service().store.append_json(
         "user_feedback",
@@ -500,8 +630,8 @@ def record_feedback(payload: FeedbackInput) -> dict[str, Any]:
             "subject_type": payload.subject_type,
             "subject_id": payload.subject_id,
             "decision": payload.decision,
-            "actor": payload.actor,
-            "payload": record,
+            "actor": principal.actor_id,
+            "payload": {**record, "actor": principal.actor_id, "role": principal.role},
         },
     )
     audit_event(
@@ -509,7 +639,7 @@ def record_feedback(payload: FeedbackInput) -> dict[str, Any]:
         subject_type=payload.subject_type,
         subject_id=payload.subject_id,
         decision=payload.decision,
-        actor=payload.actor,
+        actor=principal.actor_id,
     )
     return {"id": record_id, "status": "recorded"}
 
@@ -557,10 +687,14 @@ def research_candidate(symbol: str) -> dict[str, object]:
     tags=["research"],
     dependencies=[Depends(require_admin)],
 )
-def candidate_feedback(symbol: str, payload: FeedbackInput) -> dict[str, Any]:
+def candidate_feedback(
+    symbol: str,
+    payload: FeedbackInput,
+    principal: Annotated[Principal, Depends(require_admin)],
+) -> dict[str, Any]:
     if payload.subject_id.upper() != symbol.upper():
         raise HTTPException(status_code=422, detail="Feedback subject does not match symbol.")
-    return record_feedback(payload)
+    return record_feedback(payload, principal)
 
 
 @app.post(
@@ -699,9 +833,18 @@ def deferred_options(symbol: str) -> dict[str, str]:
     tags=["research"],
     dependencies=[Depends(require_admin)],
 )
-def create_trade_plan(plan: ConditionalPlan) -> dict[str, Any]:
+def create_trade_plan(
+    plan: ConditionalPlan,
+    principal: Annotated[Principal, Depends(require_admin)],
+) -> dict[str, Any]:
     if plan.state is not PlanState.DRAFT:
         raise HTTPException(status_code=422, detail="New plans must start in DRAFT.")
+    if not plan.market_snapshot_references:
+        raise HTTPException(
+            status_code=422,
+            detail="A stored market snapshot reference is required.",
+        )
+    plan = plan.model_copy(update={"created_by": principal.actor_id})
     payload = plan.model_dump(mode="json")
     record_id = get_service().store.append_json(
         "conditional_plans",
@@ -718,7 +861,6 @@ def create_trade_plan(plan: ConditionalPlan) -> dict[str, Any]:
 
 class PlanTransitionInput(BaseModel):
     target: PlanState
-    actor: str = Field(min_length=1, max_length=120)
     reason: str = Field(min_length=1, max_length=1000)
     evidence_urls: list[str] = Field(default_factory=list, max_length=20)
 
@@ -728,7 +870,11 @@ class PlanTransitionInput(BaseModel):
     tags=["research"],
     dependencies=[Depends(require_admin)],
 )
-def transition_trade_plan(plan_id: int, payload: PlanTransitionInput) -> dict[str, Any]:
+def transition_trade_plan(
+    plan_id: int,
+    payload: PlanTransitionInput,
+    principal: Annotated[Principal, Depends(require_admin)],
+) -> dict[str, Any]:
     record = next(
         (
             item
@@ -744,10 +890,9 @@ def transition_trade_plan(plan_id: int, payload: PlanTransitionInput) -> dict[st
         updated, event = transition_with_evidence(
             plan,
             payload.target,
-            actor=payload.actor,
+            actor=principal.actor_id,
             reason=payload.reason,
             evidence_urls=payload.evidence_urls,
-            paper_trading_enabled=False,
         )
     except (ValueError, PermissionError) as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
@@ -796,8 +941,8 @@ def deliver_latest_report() -> dict[str, str]:
     status = queue_or_send(
         service.store,
         str(report["message_zh"]),
-        bot_token=settings.telegram_bot_token,
-        chat_id=settings.telegram_chat_id,
+        bot_token=settings.telegram_bot_token.get_secret_value(),
+        chat_id=settings.telegram_chat_id.get_secret_value(),
     )
     audit_event("telegram_delivery_processed", status=status)
     return {"status": status}

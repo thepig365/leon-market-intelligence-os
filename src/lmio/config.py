@@ -67,8 +67,12 @@ class Settings(BaseSettings):
         default="AAPL:320193,META:1326801",
         validation_alias="LMIO_SEC_WATCHLIST",
     )
-    telegram_bot_token: str = Field(default="", validation_alias="TELEGRAM_BOT_TOKEN")
-    telegram_chat_id: str = Field(default="", validation_alias="TELEGRAM_CHAT_ID")
+    telegram_bot_token: SecretStr = Field(
+        default=SecretStr(""), validation_alias="TELEGRAM_BOT_TOKEN"
+    )
+    telegram_chat_id: SecretStr = Field(
+        default=SecretStr(""), validation_alias="TELEGRAM_CHAT_ID"
+    )
     telegram_webhook_secret: SecretStr = Field(
         default=SecretStr(""),
         validation_alias="TELEGRAM_WEBHOOK_SECRET",
@@ -87,6 +91,7 @@ class Settings(BaseSettings):
     )
     openai_model: str = Field(default="", validation_alias="LMIO_OPENAI_MODEL")
     admin_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="LMIO_ADMIN_API_KEY")
+    owner_identity: str = Field(default="leon", validation_alias="LMIO_OWNER_IDENTITY")
 
     @model_validator(mode="after")
     def reject_trading_activation(self) -> Self:
@@ -134,11 +139,12 @@ class Settings(BaseSettings):
         return {
             "sec_configured": bool(self.sec_user_agent.strip()),
             "telegram_configured": bool(
-                self.telegram_bot_token.strip() and self.telegram_chat_id.strip()
+                self.telegram_bot_token.get_secret_value().strip()
+                and self.telegram_chat_id.get_secret_value().strip()
             ),
             "telegram_queries_configured": bool(
-                self.telegram_bot_token.strip()
-                and self.telegram_chat_id.strip()
+                self.telegram_bot_token.get_secret_value().strip()
+                and self.telegram_chat_id.get_secret_value().strip()
                 and self.telegram_webhook_secret.get_secret_value()
             ),
             "finviz_configured": bool(self.finviz_api_token.get_secret_value()),

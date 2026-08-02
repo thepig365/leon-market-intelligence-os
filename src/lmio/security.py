@@ -6,12 +6,13 @@ from typing import Annotated
 from fastapi import Header, HTTPException
 
 from lmio.config import get_settings
+from lmio.roles import Principal, Role
 from lmio.telegram import valid_webhook_secret
 
 
 def require_admin(
     x_lmio_key: Annotated[str | None, Header()] = None,
-) -> None:
+) -> Principal:
     expected = get_settings().admin_api_key.get_secret_value()
     if not expected:
         raise HTTPException(
@@ -20,6 +21,11 @@ def require_admin(
         )
     if not x_lmio_key or not hmac.compare_digest(x_lmio_key, expected):
         raise HTTPException(status_code=401, detail="Invalid LMIO administrator credential.")
+    return Principal(
+        actor_id=get_settings().owner_identity,
+        role=Role.OWNER,
+        authentication_method="admin_api_key",
+    )
 
 
 def valid_read_credential(value: str | None) -> bool:

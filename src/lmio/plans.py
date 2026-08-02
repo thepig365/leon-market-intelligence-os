@@ -9,26 +9,27 @@ from pydantic import BaseModel, ConfigDict, Field
 class PlanState(StrEnum):
     DRAFT = "draft"
     WAITING_CONFIRMATION = "waiting_confirmation"
-    PAPER_READY = "paper_ready"
-    PAPER_OPEN = "paper_open"
+    PLAN_READY = "plan_ready"
+    MONITORING = "monitoring"
     INVALIDATED = "invalidated"
-    CLOSED = "closed"
-    REVIEWED = "reviewed"
+    EXPIRED = "expired"
+    ARCHIVED = "archived"
 
     # Compatibility aliases used by foundation records.
     WATCHING = "waiting_confirmation"
-    CONFIRMED = "paper_ready"
-    EXPIRED = "closed"
+    CONFIRMED = "plan_ready"
+    CLOSED = "expired"
+    REVIEWED = "archived"
 
 
 ALLOWED_TRANSITIONS = {
     PlanState.DRAFT: {PlanState.WAITING_CONFIRMATION, PlanState.INVALIDATED},
-    PlanState.WAITING_CONFIRMATION: {PlanState.PAPER_READY, PlanState.INVALIDATED},
-    PlanState.PAPER_READY: {PlanState.PAPER_OPEN, PlanState.INVALIDATED},
-    PlanState.PAPER_OPEN: {PlanState.CLOSED, PlanState.INVALIDATED},
-    PlanState.INVALIDATED: {PlanState.REVIEWED},
-    PlanState.CLOSED: {PlanState.REVIEWED},
-    PlanState.REVIEWED: set(),
+    PlanState.WAITING_CONFIRMATION: {PlanState.PLAN_READY, PlanState.INVALIDATED},
+    PlanState.PLAN_READY: {PlanState.MONITORING, PlanState.INVALIDATED},
+    PlanState.MONITORING: {PlanState.EXPIRED, PlanState.INVALIDATED},
+    PlanState.INVALIDATED: {PlanState.ARCHIVED},
+    PlanState.EXPIRED: {PlanState.ARCHIVED},
+    PlanState.ARCHIVED: set(),
 }
 
 
@@ -39,12 +40,16 @@ class ConditionalPlan(BaseModel):
     state: PlanState = PlanState.DRAFT
     thesis: str
     confirmation_condition: str
+    risk_condition: str = "Risk conditions require authenticated operator review."
     invalidation_condition: str
     entry_zone: str
     stop_reference: str
     target_reference: str
     risk_reward: float = Field(gt=0)
     evidence_urls: list[str]
+    market_snapshot_references: list[str] = Field(default_factory=list)
+    expires_at: datetime | None = None
+    created_by: str = "lmio-system"
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     version: str = "conditional-plan-v1"
 
@@ -68,12 +73,9 @@ def transition_with_evidence(
     actor: str,
     reason: str,
     evidence_urls: list[str],
-    paper_trading_enabled: bool = False,
 ) -> tuple[ConditionalPlan, PlanTransition]:
     if target not in ALLOWED_TRANSITIONS[plan.state]:
         raise ValueError(f"invalid plan transition: {plan.state} -> {target}")
-    if target in {PlanState.PAPER_READY, PlanState.PAPER_OPEN} and not paper_trading_enabled:
-        raise PermissionError("paper trading is disabled")
     if not actor.strip() or not reason.strip():
         raise ValueError("actor and reason are required")
     updated = plan.model_copy(update={"state": target})
@@ -96,6 +98,5 @@ def transition(plan: ConditionalPlan, target: PlanState) -> ConditionalPlan:
         actor="lmio-system",
         reason="foundation compatibility transition",
         evidence_urls=plan.evidence_urls,
-        paper_trading_enabled=False,
     )
     return updated
