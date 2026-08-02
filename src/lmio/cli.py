@@ -35,7 +35,7 @@ def main() -> None:
     if args.command == "backup":
         if args.file is None:
             parser.error("--file is required for backup")
-        payload = service.store.backup_to(args.file)
+        payload = service.store.backup_export(args.file)
     elif args.command == "demo-daily":
         payload = service.run_demo_daily()
     elif args.command == "import-csv":

@@ -9,7 +9,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 MIGRATION = """
 CREATE TABLE IF NOT EXISTS schema_versions (
     version INTEGER PRIMARY KEY,
@@ -410,6 +410,15 @@ class RuntimeStore:
                 """
             )
             connection.execute(
+                """
+                INSERT OR IGNORE INTO schema_versions(version)
+                SELECT 7
+                WHERE EXISTS (
+                    SELECT 1 FROM schema_versions WHERE version = 6
+                )
+                """
+            )
+            connection.execute(
                 "INSERT OR IGNORE INTO schema_versions(version) VALUES (?)",
                 (SCHEMA_VERSION,),
             )
@@ -420,6 +429,25 @@ class RuntimeStore:
         with self.connection() as connection:
             rows = connection.execute("PRAGMA integrity_check").fetchall()
         return [str(row[0]) for row in rows]
+
+    def connectivity_check(self) -> dict[str, Any]:
+        with self.connection() as connection:
+            value = connection.execute("SELECT 1").fetchone()[0]
+        return {"status": "ok" if value == 1 else "failed", "backend": "sqlite"}
+
+    def schema_check(self) -> dict[str, Any]:
+        return {"status": "ok", "schema_versions": self.schema_versions()}
+
+    def rls_check(self) -> dict[str, Any]:
+        return {"status": "not_applicable", "reason": "SQLite has no row-level security."}
+
+    def record_count_check(self) -> dict[str, Any]:
+        return {"status": "ok", "counts": self.counts()}
+
+    def referential_integrity_check(self) -> dict[str, Any]:
+        with self.connection() as connection:
+            findings = [dict(row) for row in connection.execute("PRAGMA foreign_key_check")]
+        return {"status": "ok" if not findings else "failed", "findings": findings}
 
     def schema_versions(self) -> list[int]:
         with self.connection() as connection:
@@ -462,6 +490,11 @@ class RuntimeStore:
             "counts": verified.counts(),
             "integrity": findings,
         }
+
+    def backup_export(self, destination: str | Path) -> dict[str, Any]:
+        """Create a verified SQLite backup; named consistently with remote exports."""
+
+        return self.backup_to(destination)
 
     def append_json(self, table: str, columns: dict[str, Any]) -> int:
         allowed = {

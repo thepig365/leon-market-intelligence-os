@@ -6,7 +6,11 @@ prefix and deny direct authenticated/anonymous access through RLS.
 
 from __future__ import annotations
 
+import json
+import sqlite3
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -108,9 +112,32 @@ class SupabaseRuntimeStore:
 
         self._request("GET", "lmio_records", params={"select": "id", "limit": "1"})
 
-    def integrity_check(self) -> list[str]:
-        self.migrate()
-        return ["ok"]
+    def connectivity_check(self) -> dict[str, Any]:
+        self._request("GET", "lmio_schema_versions", params={"select": "version", "limit": "1"})
+        return {"status": "ok", "backend": "supabase"}
+
+    def schema_check(self) -> dict[str, Any]:
+        versions = self.schema_versions()
+        return {
+            "status": "ok" if versions else "failed",
+            "schema_versions": versions,
+            "required_version": 8,
+        }
+
+    def rls_check(self) -> dict[str, Any]:
+        response = self._request("POST", "rpc/lmio_rls_check", json={})
+        return dict(response.json())
+
+    def record_count_check(self) -> dict[str, Any]:
+        return {"status": "ok", "counts": self.counts()}
+
+    def referential_integrity_check(self) -> dict[str, Any]:
+        return {
+            "status": "not_applicable",
+            "reason": (
+                "The current generic LMIO record store has no declared cross-table foreign keys."
+            ),
+        }
 
     def schema_versions(self) -> list[int]:
         response = self._request(
@@ -120,11 +147,90 @@ class SupabaseRuntimeStore:
         )
         return [int(item["version"]) for item in response.json()]
 
-    def backup_to(self, destination: str) -> dict[str, Any]:
-        raise RuntimeError(
-            "Supabase backups use the approved managed export/recovery procedure; "
-            f"a local SQLite backup cannot be written to {destination}."
+    def backup_export(self, destination: str | Path) -> dict[str, Any]:
+        """Export every LMIO physical table to a hashed, local JSON recovery set."""
+
+        target = Path(destination)
+        if target.exists():
+            raise FileExistsError(target)
+        target.mkdir(parents=True)
+        tables = (
+            "lmio_schema_versions",
+            "lmio_records",
+            "lmio_ingestion_dedup",
+            "lmio_news_events",
+            "lmio_symbols",
+            "lmio_telegram_deliveries",
+            "lmio_synthetic_records",
         )
+        files: dict[str, dict[str, Any]] = {}
+        for table in tables:
+            rows = self._request(
+                "GET",
+                table,
+                params={"select": "*", "order": "created_at.asc"},
+            ).json()
+            content = json.dumps(rows, ensure_ascii=False, sort_keys=True, indent=2, default=str)
+            output = target / f"{table}.json"
+            output.write_text(content)
+            files[table] = {
+                "file": output.name,
+                "rows": len(rows),
+                "sha256": sha256(output.read_bytes()).hexdigest(),
+            }
+        manifest = {
+            "exported_at": datetime.now(UTC).isoformat(),
+            "schema_versions": self.schema_versions(),
+            "files": files,
+            "limitations": [
+                "This is a logical export, not point-in-time recovery.",
+                "Provider-managed disaster recovery depends on the active Supabase plan.",
+            ],
+        }
+        (target / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2)
+        )
+        return manifest
+
+    @staticmethod
+    def restore_rehearsal(export_directory: str | Path, target: str | Path) -> dict[str, Any]:
+        """Load an export into an isolated SQLite evidence store and compare counts/hashes."""
+
+        source = Path(export_directory)
+        manifest = json.loads((source / "manifest.json").read_text())
+        database = Path(target)
+        if database.exists():
+            raise FileExistsError(database)
+        connection = sqlite3.connect(database)
+        restored: dict[str, int] = {}
+        try:
+            connection.execute(
+                "CREATE TABLE restored_records (source_table TEXT, row_index INTEGER, payload TEXT)"
+            )
+            for table, metadata in manifest["files"].items():
+                path = source / metadata["file"]
+                if sha256(path.read_bytes()).hexdigest() != metadata["sha256"]:
+                    raise RuntimeError(f"Export hash mismatch for {table}")
+                rows = json.loads(path.read_text())
+                connection.executemany(
+                    "INSERT INTO restored_records(source_table, row_index, payload) "
+                    "VALUES (?, ?, ?)",
+                    [
+                        (table, index, json.dumps(row, sort_keys=True, default=str))
+                        for index, row in enumerate(rows)
+                    ],
+                )
+                restored[table] = len(rows)
+            connection.commit()
+        finally:
+            connection.close()
+        expected = {table: int(item["rows"]) for table, item in manifest["files"].items()}
+        return {
+            "status": "passed" if restored == expected else "failed",
+            "expected_counts": expected,
+            "restored_counts": restored,
+            "target": str(database),
+        }
 
     @staticmethod
     def _record_payload(kind: str, columns: dict[str, Any]) -> dict[str, Any]:
