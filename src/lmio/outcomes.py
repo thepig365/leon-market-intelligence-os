@@ -34,6 +34,7 @@ class TimedPrice:
     observed_at: datetime
     price: float
     benchmark_price: float | None = None
+    evidence_reference: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +48,8 @@ class HorizonOutcome:
     max_favourable_excursion_pct: float | None = None
     invalidation_triggered: bool | None = None
     missing_data_state: str | None = None
+    actual_observation_time: datetime | None = None
+    evidence_references: tuple[str, ...] = ()
 
 
 def calculate_outcome(signal_price: float, closes: list[float]) -> Outcome:
@@ -209,6 +212,10 @@ def evaluate_timed_horizon(
             any(item.price <= invalidation_price for item in path)
             if invalidation_price is not None
             else None
+        ),
+        actual_observation_time=terminal.observed_at,
+        evidence_references=tuple(
+            item.evidence_reference for item in path if item.evidence_reference is not None
         ),
     )
 

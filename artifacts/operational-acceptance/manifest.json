@@ -1,12 +1,12 @@
 {
-  "manifest_version": "lmio-operational-acceptance-v1",
+  "manifest_version": "lmio-operational-acceptance-v2",
   "generated_at": "2026-08-02T00:00:00+10:00",
   "starting_commit": "369fa1c29448782eea27cd5f47728ec6e4836227",
   "branch": "codex/lmio-operational-acceptance",
   "status": "draft_external_gates_pending",
   "evidence_levels": {
     "code": "complete_for_approved_scope",
-    "automated_tests": "passed",
+    "automated_tests": "passed_locally_210_tests_ci_pending_current_head",
     "fixture_replay": "passed",
     "real_authorised_data": "pending_new_redacted_run",
     "scheduled_execution": "pending_three_us_trading_days",
@@ -19,10 +19,15 @@
     "dashboard_typecheck",
     "dashboard_contract_test",
     "dashboard_build",
+    "python_dependency_audit",
+    "dashboard_dependency_audit",
     "git_diff_check"
   ],
-  "canonical_pipeline_stages": 22,
-  "schema_version": 11,
+  "canonical_pipeline_stages": 21,
+  "schema_version": 12,
+  "stage_22_resolution": "removed_from_executable_pipeline_planned_external_governance_integration",
+  "signal_stage": "signal_eligibility_check_with_separate_authenticated_operator_creation",
+  "scheduler_executor_process": "not_verified",
   "trading": {
     "can_trade": false,
     "live_trading_enabled": false,

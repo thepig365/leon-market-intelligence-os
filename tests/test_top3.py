@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 from lmio.demo import demo_universe, meta_acceptance_input
 from lmio.domain import DataProvenance, NewsEvent
-from lmio.research import build_research_pack
+from lmio.research import ResearchStatement, StatementClass, build_research_pack
 from lmio.screens import run_core_screens
 from lmio.top3 import evaluate_top3
 from lmio.valuation import run_valuation
@@ -48,6 +48,20 @@ def test_top3_selects_only_after_valuation_and_research_gates_pass() -> None:
         )
     ]
     research = build_research_pack(candidate, news, valuation)
+    research = research.model_copy(
+        update={
+            "fields": {
+                name: [
+                    ResearchStatement(
+                        text=f"Verified {name}",
+                        classification=StatementClass.VERIFIED_FACT,
+                        evidence_references=["https://example.test/evidence"],
+                    )
+                ]
+                for name in research.fields
+            }
+        }
+    )
 
     selected, status = evaluate_top3(
         [candidate],

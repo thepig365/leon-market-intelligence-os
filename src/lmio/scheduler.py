@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from lmio.providers.sec import SECProvider
 from lmio.sec_monitor import monitor_sec
-from lmio.telegram import MessageKind, drain_outbox
+from lmio.telegram import MessageKind, drain_outbox, format_message, queue_or_send
 
 if TYPE_CHECKING:
     from lmio.service import LMIOService
@@ -78,6 +78,25 @@ def next_scheduled_time(job: ScheduledJob, after: datetime | None = None) -> dat
     raise RuntimeError(f"No next schedule found for {job.job_id}")
 
 
+def scheduled_window(job: ScheduledJob, at: datetime | None = None) -> datetime:
+    """Return the most recent declared UTC slot for one overlap lock."""
+
+    current = (at or datetime.now(UTC)).astimezone(UTC)
+    for offset in range(8):
+        day = (current - timedelta(days=offset)).date()
+        candidate = datetime(
+            day.year,
+            day.month,
+            day.day,
+            job.schedule.hour_utc,
+            job.schedule.minute_utc,
+            tzinfo=UTC,
+        )
+        if candidate.weekday() in job.schedule.weekdays and candidate <= current:
+            return candidate
+    raise RuntimeError(f"No previous schedule found for {job.job_id}")
+
+
 def scheduler_status(store: Any) -> dict[str, object]:
     jobs = load_scheduler_manifest()
     history = [
@@ -110,10 +129,52 @@ def scheduler_status(store: Any) -> dict[str, object]:
 def _execute(service: LMIOService, job_id: str) -> dict[str, object]:
     if job_id == "premarket-data-screening":
         return service.run_operational_pipeline()
-    if job_id == "after-open-price-news-verification":
+    if job_id == "after-open-finviz-refresh":
         return service.refresh_finviz(message_kind=MessageKind.AFTER_OPEN)
     if job_id == "after-close-outcomes-report":
-        return service.process_due_outcomes()
+        outcomes = service.process_due_outcomes()
+        performance = service.aggregate_strategy_performance()
+        message = format_message(
+            MessageKind.AFTER_CLOSE,
+            regime="仅汇总已到期、具有实际价格证据的研究信号",
+            opportunities=[
+                f"本次完成 {outcomes['completed']} 个结果观察",
+                f"更新 {performance['summaries']} 个策略/周期汇总",
+            ],
+            risks=[
+                f"尚无可用价格证据 {outcomes['unavailable']} 项",
+                f"处理失败 {outcomes['failed']} 项",
+            ],
+            next_actions=["等待未到期周期；未知值不会按零计算"],
+        )
+        report_id = service.store.append_json(
+            "reports",
+            {
+                "report_type": "after_close_outcome_summary",
+                "payload": {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "message_zh": message,
+                    "outcomes": outcomes,
+                    "performance": performance,
+                    "execution_capability": False,
+                },
+            },
+        )
+        delivery = queue_or_send(
+            service.store,
+            message,
+            bot_token=service.settings.telegram_bot_token.get_secret_value(),
+            chat_id=service.settings.telegram_chat_id.get_secret_value(),
+            kind=MessageKind.AFTER_CLOSE,
+            dedupe_context=f"after-close-report:{report_id}",
+        )
+        return {
+            "status": "completed",
+            "report_id": report_id,
+            "outcomes": outcomes,
+            "performance": performance,
+            "telegram": delivery,
+        }
     if job_id == "official-news-refresh":
         return service.refresh_official_news()
     if job_id == "sec-refresh":
@@ -139,11 +200,42 @@ def _execute(service: LMIOService, job_id: str) -> dict[str, object]:
     raise ValueError(f"Unknown scheduler job: {job_id}")
 
 
-def run_scheduled_job(service: LMIOService, job_id: str) -> dict[str, object]:
+def run_scheduled_job(
+    service: LMIOService,
+    job_id: str,
+    *,
+    now: datetime | None = None,
+) -> dict[str, object]:
     jobs = {job.job_id: job for job in load_scheduler_manifest()}
     if job_id not in jobs:
         raise ValueError(f"Job is not declared in scheduler manifest: {job_id}")
-    started = datetime.now(UTC)
+    started = (now or datetime.now(UTC)).astimezone(UTC)
+    window = scheduled_window(jobs[job_id], started)
+    lock_key = f"scheduler:{job_id}:{window.isoformat()}"
+    acquired = service.store.mark_ingestion_fingerprint(lock_key, "scheduler_window")
+    if not acquired:
+        finished = datetime.now(UTC)
+        service.store.append_json(
+            "system_events",
+            {
+                "event_type": "scheduler_job",
+                "severity": "skipped_duplicate",
+                "payload": {
+                    "job_id": job_id,
+                    "scheduled_time": window.isoformat(),
+                    "started_at": started.isoformat(),
+                    "finished_at": finished.isoformat(),
+                    "lock_key": lock_key,
+                    "lock_acquired": False,
+                    "skipped_duplicate": True,
+                },
+            },
+        )
+        return {
+            "job_id": job_id,
+            "status": "skipped_duplicate",
+            "scheduled_time": window.isoformat(),
+        }
     try:
         result = _execute(service, job_id)
     except Exception as error:
@@ -154,8 +246,11 @@ def run_scheduled_job(service: LMIOService, job_id: str) -> dict[str, object]:
                 "severity": "failed",
                 "payload": {
                     "job_id": job_id,
+                    "scheduled_time": window.isoformat(),
                     "started_at": started.isoformat(),
                     "finished_at": datetime.now(UTC).isoformat(),
+                    "lock_key": lock_key,
+                    "lock_acquired": True,
                     "error_category": type(error).__name__,
                 },
             },
@@ -171,8 +266,13 @@ def run_scheduled_job(service: LMIOService, job_id: str) -> dict[str, object]:
             "severity": severity,
             "payload": {
                 "job_id": job_id,
+                "scheduled_time": window.isoformat(),
                 "started_at": started.isoformat(),
                 "finished_at": finished.isoformat(),
+                "run_id": result.get("run_id"),
+                "lock_key": lock_key,
+                "lock_acquired": True,
+                "skipped_duplicate": False,
                 "duration_ms": int((finished - started).total_seconds() * 1000),
                 "next_scheduled_time": next_scheduled_time(jobs[job_id], finished).isoformat(),
             },

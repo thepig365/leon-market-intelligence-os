@@ -60,6 +60,44 @@ def test_runtime_read_key_protects_non_health_routes(
     )
 
 
+def test_operational_lineage_api_is_protected_and_redacts_provider_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "runtime.sqlite3",
+        environment="production",
+        read_api_key="lineage-read-secret",
+    )
+    service = LMIOService(settings)
+    service.store.append_json(
+        "operational_lineage",
+        {
+            "run_id": "run-lineage-safe",
+            "state": "recorded",
+            "payload": {
+                "snapshot_ids": ["snapshot-fingerprint-only"],
+                "candidate_ids": ["candidate-1"],
+                "report_id": "report-1",
+            },
+        },
+    )
+    monkeypatch.setattr("lmio.security.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.main.get_service", lambda: service)
+
+    assert request("GET", "/api/v1/audit/lineage/run-lineage-safe").status_code == 401
+    response = request(
+        "GET",
+        "/api/v1/audit/lineage/run-lineage-safe",
+        headers={"x-lmio-read-key": "lineage-read-secret"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["run_id"] == "run-lineage-safe"
+    assert response.json()["raw_provider_rows_exposed"] is False
+
+
 def test_ready_reports_latest_verified_provider(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

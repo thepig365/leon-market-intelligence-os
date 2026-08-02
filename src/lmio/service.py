@@ -21,9 +21,11 @@ from lmio.domain import (
 from lmio.official_news_monitor import monitor_official_news
 from lmio.outcomes import TimedPrice, evaluate_timed_horizon
 from lmio.pipeline import OperationalPipeline, StageResult, StageStatus
+from lmio.providers.base import ProviderState
 from lmio.providers.finviz_api import FinvizAPIProvider
 from lmio.providers.official_rss import OfficialRSSProvider
 from lmio.providers.sec import SECProvider
+from lmio.ranking import RankedCandidate, rank_top10
 from lmio.reports import build_daily_report, classify_regime, unverified_regime
 from lmio.research import ResearchPack, build_research_pack
 from lmio.screens import run_core_screens
@@ -31,8 +33,10 @@ from lmio.sec_monitor import monitor_sec
 from lmio.store import RuntimeStore
 from lmio.supabase_store import SupabaseRuntimeStore
 from lmio.telegram import MessageKind, queue_or_send
+from lmio.top3 import evaluate_top3
 from lmio.universe import UniversePolicy, build_investable_universe
 from lmio.valuation import run_valuation
+from lmio.valuation_inputs import FinancialEvidence, PreparedValuationInput, prepare_valuation_input
 
 MAX_OPERATIONAL_CANDIDATES = 50
 
@@ -61,6 +65,9 @@ class LMIOService:
         self,
         *,
         finviz_provider: FinvizAPIProvider | None = None,
+        valuation_evidence_by_symbol: (
+            dict[str, FinancialEvidence | dict[str, object]] | None
+        ) = None,
     ) -> dict[str, object]:
         """Run the sole production daily pipeline without any trading capability."""
 
@@ -71,7 +78,7 @@ class LMIOService:
         def preflight(context: dict[str, object]) -> StageResult:
             readiness = self.settings.integration_readiness()
             context["readiness"] = readiness
-            if not provider.health().configured:
+            if provider.health().state is ProviderState.DISABLED:
                 return StageResult(
                     status=StageStatus.FAILED,
                     error_summary="FinvizNotConfigured",
@@ -89,7 +96,36 @@ class LMIOService:
                     status=StageStatus.FAILED,
                     error_summary="EmptyMarketSnapshot",
                 )
+            if any(not item.provenance.operational for item in snapshots):
+                return StageResult(
+                    status=StageStatus.FAILED,
+                    error_summary="NonOperationalMarketSnapshot",
+                )
             context["snapshots"] = snapshots
+            snapshot_ids: dict[str, str] = {}
+            for snapshot in snapshots:
+                snapshot_payload = snapshot.model_dump(mode="json")
+                fingerprint = hashlib.sha256(
+                    json.dumps(
+                        {
+                            "provider": provider.name,
+                            "symbol": snapshot.symbol,
+                            "observed_at": snapshot_payload["observed_at"],
+                            "payload": snapshot_payload,
+                        },
+                        sort_keys=True,
+                    ).encode()
+                ).hexdigest()
+                self.store.put_provider_snapshot(
+                    fingerprint,
+                    provider=provider.name,
+                    symbol=snapshot.symbol,
+                    company=snapshot.company,
+                    observed_at=str(snapshot_payload["observed_at"]),
+                    payload=snapshot_payload,
+                )
+                snapshot_ids[snapshot.symbol.upper()] = f"snapshot-{fingerprint}"
+            context["snapshot_ids"] = snapshot_ids
             evidence = provider.last_ingestion_evidence or {}
             self.store.append_json(
                 "provider_health",
@@ -101,7 +137,8 @@ class LMIOService:
             )
             return StageResult(
                 output_count=len(snapshots),
-                evidence_references=[str(evidence.get("snapshot_id", "finviz:no-snapshot-id"))],
+                evidence_references=sorted(snapshot_ids.values()),
+                details={"provider_snapshot_ids": snapshot_ids},
             )
 
         def official_refresh(context: dict[str, object]) -> StageResult:
@@ -146,7 +183,19 @@ class LMIOService:
         def screens(context: dict[str, object]) -> StageResult:
             candidates = run_core_screens(list(context.get("investable") or []))
             context["candidates"] = candidates
-            return StageResult(output_count=len(candidates))
+            screen_run_id = self.store.append_json(
+                "screen_runs",
+                {
+                    "calculation_version": "screens-v1",
+                    "universe_run_id": None,
+                    "payload": [item.model_dump(mode="json") for item in candidates],
+                },
+            )
+            context["screen_run_id"] = f"screen-run-{screen_run_id}"
+            return StageResult(
+                output_count=len(candidates),
+                evidence_references=[str(context["screen_run_id"])],
+            )
 
         def pattern(context: dict[str, object]) -> StageResult:
             candidates = list(context.get("candidates") or [])
@@ -160,64 +209,305 @@ class LMIOService:
             )
 
         def top10(context: dict[str, object]) -> StageResult:
-            top = list(context.get("candidates") or [])[:10]
-            context["top_10"] = top
-            return StageResult(output_count=len(top))
+            ranked = rank_top10(
+                list(context.get("candidates") or []),
+                run_id=str(context["run_id"]),
+            )
+            context["top_10_ranked"] = ranked
+            context["top_10"] = [item.candidate for item in ranked]
+            context["candidate_ids"] = {
+                item.candidate.symbol.upper(): item.candidate_id for item in ranked
+            }
+            record_ids: list[str] = []
+            for item in ranked:
+                record_id = self.store.append_json(
+                    "top10_rankings",
+                    {
+                        "run_id": str(context["run_id"]),
+                        "symbol": item.candidate.symbol,
+                        "rank": item.rank,
+                        "payload": item.model_dump(mode="json"),
+                    },
+                )
+                record_ids.append(f"top10-ranking-{record_id}")
+            context["top10_ranking_ids"] = record_ids
+            return StageResult(
+                output_count=len(ranked),
+                evidence_references=record_ids,
+                details={
+                    "ranked_symbols": [item.candidate.symbol for item in ranked],
+                    "deduplicated": sum(bool(item.alternative_strategies) for item in ranked),
+                },
+            )
 
         def valuation_inputs(context: dict[str, object]) -> StageResult:
-            top = list(context.get("top_10") or [])
-            ready = [item for item in top if not item.missing_fields]
-            context["valuation_ready"] = ready
+            ranked = list(context.get("top_10_ranked") or [])
+            provided = valuation_evidence_by_symbol or {}
+            snapshot_ids = dict(context.get("snapshot_ids") or {})
+            prepared_by_symbol: dict[str, PreparedValuationInput] = {}
+            record_ids: dict[str, str] = {}
+            blocked_symbols: list[str] = []
+            incomplete = 0
+            for raw_item in ranked:
+                item = RankedCandidate.model_validate(raw_item)
+                symbol = item.candidate.symbol.upper()
+                supplied = provided.get(symbol)
+                if supplied is None:
+                    evidence = FinancialEvidence(
+                        symbol=symbol,
+                        company_type="mature_non_financial",
+                        provenance=item.candidate.provenance,
+                        observed_at=max(
+                            (entry.observed_at for entry in item.candidate.evidence),
+                            default=datetime.now(UTC),
+                        ),
+                        source_fields={
+                            "revenue": None,
+                            "earnings": None,
+                            "operating_cash_flow": None,
+                            "capex": None,
+                            "reported_free_cash_flow": None,
+                            "debt": None,
+                            "cash": None,
+                            "net_cash": None,
+                            "diluted_shares": None,
+                            "market_price": item.candidate.market_price,
+                        },
+                        source_references={
+                            "market_price": snapshot_ids.get(symbol, "missing:snapshot")
+                        },
+                        assumptions={},
+                    )
+                else:
+                    evidence = (
+                        supplied
+                        if isinstance(supplied, FinancialEvidence)
+                        else FinancialEvidence.model_validate(supplied)
+                    )
+                    if evidence.symbol.upper() != symbol:
+                        raise ValueError("Valuation evidence symbol does not match candidate")
+                    if evidence.provenance is not item.candidate.provenance:
+                        raise ValueError("Valuation evidence provenance does not match candidate")
+                prepared = prepare_valuation_input(evidence)
+                prepared_by_symbol[symbol] = prepared
+                if prepared.status != "ready":
+                    blocked_symbols.append(symbol)
+                    if prepared.status == "blocked":
+                        incomplete += 1
+                payload = {
+                    "run_id": context["run_id"],
+                    "candidate_id": item.candidate_id,
+                    "source_snapshot_ids": [snapshot_ids.get(symbol, "missing:snapshot")],
+                    "company_type": evidence.company_type,
+                    "financial_evidence": evidence.model_dump(mode="json"),
+                    "prepared": prepared.model_dump(mode="json"),
+                    "calculation_version": prepared.model_version,
+                    "recorded_at": datetime.now(UTC).isoformat(),
+                }
+                record_id = self.store.append_json(
+                    "valuation_input_records",
+                    {
+                        "run_id": str(context["run_id"]),
+                        "candidate_id": item.candidate_id,
+                        "symbol": symbol,
+                        "status": prepared.status,
+                        "payload": payload,
+                    },
+                )
+                record_ids[symbol] = f"valuation-input-{record_id}"
+            context["prepared_valuation_inputs"] = prepared_by_symbol
+            context["valuation_input_ids"] = record_ids
+            ready_count = sum(item.status == "ready" for item in prepared_by_symbol.values())
             return StageResult(
-                status=StageStatus.SUCCEEDED if len(ready) == len(top) else StageStatus.PARTIAL,
-                output_count=len(ready),
-                warning_count=len(top) - len(ready),
-                error_summary=(
-                    None if len(ready) == len(top) else "Missing provider-neutral valuation inputs"
+                status=(
+                    StageStatus.SUCCEEDED if ready_count == len(ranked) else StageStatus.PARTIAL
                 ),
+                output_count=ready_count,
+                warning_count=len(ranked) - ready_count,
+                error_summary=None if ready_count == len(ranked) else "Valuation inputs incomplete",
+                evidence_references=sorted(record_ids.values()),
+                details={
+                    "inputs_attempted": len(ranked),
+                    "inputs_completed": ready_count,
+                    "inputs_incomplete": incomplete,
+                    "blocked_symbols": blocked_symbols,
+                },
             )
 
         def valuation_routing(context: dict[str, object]) -> StageResult:
-            ready = list(context.get("valuation_ready") or [])
-            incomplete = bool(context.get("top_10")) and not ready
+            prepared_by_symbol = dict(context.get("prepared_valuation_inputs") or {})
+            input_ids = dict(context.get("valuation_input_ids") or {})
+            candidate_ids = dict(context.get("candidate_ids") or {})
+            valuations: dict[str, ValuationResult] = {}
+            valuation_ids: dict[str, str] = {}
+            not_applicable = 0
+            incomplete = 0
+            failed = 0
+            for symbol, raw_prepared in prepared_by_symbol.items():
+                prepared = PreparedValuationInput.model_validate(raw_prepared)
+                if prepared.status == "unsupported":
+                    not_applicable += 1
+                    continue
+                if prepared.status != "ready" or prepared.valuation_input is None:
+                    incomplete += 1
+                    continue
+                try:
+                    result = run_valuation(prepared.valuation_input)
+                except Exception:
+                    failed += 1
+                    continue
+                valuations[symbol] = result
+                record_id = self.store.append_json(
+                    "valuation_runs",
+                    {
+                        "symbol": symbol,
+                        "calculation_version": result.calculation_version,
+                        "input_payload": {
+                            "run_id": context["run_id"],
+                            "candidate_id": candidate_ids[symbol],
+                            "valuation_input_id": input_ids[symbol],
+                            "route": prepared.route,
+                            "input": prepared.valuation_input.model_dump(mode="json"),
+                        },
+                        "result_payload": result.model_dump(mode="json"),
+                    },
+                )
+                valuation_ids[symbol] = f"valuation-{record_id}"
+            context["valuations"] = valuations
+            context["valuation_ids"] = valuation_ids
+            attempted = len(prepared_by_symbol)
+            valued = len(valuations)
             return StageResult(
-                status=StageStatus.PARTIAL if incomplete else StageStatus.SUCCEEDED,
-                output_count=len(ready),
-                warning_count=1 if incomplete else 0,
-                evidence_references=["valuation:provider-neutral-routing"],
+                status=(StageStatus.SUCCEEDED if valued == attempted else StageStatus.PARTIAL),
+                output_count=valued,
+                warning_count=not_applicable + incomplete + failed,
+                error_summary=None if valued == attempted else "Some valuations are unavailable",
+                evidence_references=sorted(valuation_ids.values()),
+                details={
+                    "routed": attempted,
+                    "valued": valued,
+                    "not_applicable": not_applicable,
+                    "incomplete": incomplete,
+                    "failed": failed,
+                },
             )
 
         def top3_and_report(context: dict[str, object]) -> StageResult:
-            snapshots = list(context.get("snapshots") or [])
-            report = self.run_daily(
-                snapshots,
-                data_mode=provider.name,
-                run_id=str(context["run_id"]),
-            )
-            context["report"] = report
-            top3 = dict(report.get("top_3_status") or {})
-            available = bool(top3.get("available"))
+            top = list(context.get("top_10") or [])
+            valuations = dict(context.get("valuations") or {})
+            _, preliminary = evaluate_top3(top, valuations, {})
+            context["preliminary_top3_status"] = preliminary
             return StageResult(
-                status=StageStatus.SUCCEEDED if available else StageStatus.PARTIAL,
-                output_count=len(top3.get("evaluations") or []),
-                warning_count=0 if available else 1,
-                error_summary=None if available else str(top3.get("message", "Top 3 unavailable")),
-                evidence_references=["store:top3_evaluations", "store:reports:daily"],
+                status=StageStatus.SUCCEEDED,
+                output_count=len(preliminary.evaluations),
+                evidence_references=sorted(dict(context.get("valuation_ids") or {}).values()),
+                details={
+                    "selection_phase": "preliminary_only",
+                    "final_selection_deferred_until_research": True,
+                    "reason_counts": preliminary.reason_counts,
+                },
             )
 
         def research(context: dict[str, object]) -> StageResult:
-            packs = self.research_latest(limit=10)
+            top = list(context.get("top_10") or [])
+            valuations = dict(context.get("valuations") or {})
+            valuation_ids = dict(context.get("valuation_ids") or {})
+            candidate_ids = dict(context.get("candidate_ids") or {})
+            news = [NewsEvent.model_validate(item) for item in self.store.news_payloads()]
+            packs: dict[str, ResearchPack] = {}
+            research_ids: dict[str, str] = {}
+            for candidate in top:
+                symbol = candidate.symbol.upper()
+                pack = build_research_pack(candidate, news, valuations.get(symbol)).model_copy(
+                    update={
+                        "run_id": str(context["run_id"]),
+                        "candidate_id": candidate_ids[symbol],
+                        "valuation_id": valuation_ids.get(symbol),
+                        "source_snapshot_ids": [
+                            dict(context.get("snapshot_ids") or {}).get(symbol, "missing:snapshot")
+                        ],
+                    }
+                )
+                packs[symbol] = pack
+                record_id = self.store.append_json(
+                    "research_packs",
+                    {
+                        "symbol": symbol,
+                        "model_version": pack.model_version,
+                        "payload": pack.model_dump(mode="json"),
+                    },
+                )
+                research_ids[symbol] = f"research-pack-{record_id}"
+            selected, final_status = evaluate_top3(top, valuations, packs)
+            top3_ids: list[str] = []
+            for evaluation in final_status.evaluations:
+                record_id = self.store.append_json(
+                    "top3_evaluations",
+                    {
+                        "symbol": evaluation.symbol,
+                        "state": evaluation.state,
+                        "payload": {
+                            **evaluation.model_dump(mode="json"),
+                            "run_id": context["run_id"],
+                            "candidate_id": candidate_ids[evaluation.symbol.upper()],
+                            "valuation_id": valuation_ids.get(evaluation.symbol.upper()),
+                            "research_pack_id": research_ids[evaluation.symbol.upper()],
+                            "phase": "final_after_research",
+                        },
+                    },
+                )
+                top3_ids.append(f"top3-evaluation-{record_id}")
             context["research_packs"] = packs
+            context["research_ids"] = research_ids
+            context["top3_selected"] = selected
+            context["top3_status"] = final_status
+            context["top3_evaluation_ids"] = top3_ids
+            snapshots = list(context.get("snapshots") or [])
+            provenance = snapshots[0].provenance
+            report = build_daily_report(
+                top,
+                universe_checked=len(snapshots),
+                investable=len(list(context.get("investable") or [])),
+                regime=unverified_regime(),
+                data_mode=provider.name,
+                valuations=valuations,
+                research_packs=packs,
+                provenance=provenance,
+            )
+            report_payload = report.model_dump(mode="json")
+            report_id = self.store.append_json(
+                "reports",
+                {
+                    "report_type": "daily",
+                    "payload": {**report_payload, "run_id": context["run_id"]},
+                },
+            )
+            context["report"] = report_payload
+            context["report_id"] = f"report-{report_id}"
+            complete = sum(pack.mandatory_completion == 1 for pack in packs.values())
             return StageResult(
-                status=StageStatus.SUCCEEDED if packs else StageStatus.PARTIAL,
+                status=(
+                    StageStatus.SUCCEEDED
+                    if packs and complete == len(packs)
+                    else StageStatus.PARTIAL
+                ),
                 output_count=len(packs),
-                warning_count=0 if packs else 1,
-                evidence_references=["store:research_packs"],
+                warning_count=len(packs) - complete,
+                error_summary=None if complete == len(packs) else "Research evidence incomplete",
+                evidence_references=[*research_ids.values(), *top3_ids],
+                details={
+                    "same_run_research_packages": len(packs),
+                    "mandatory_complete": complete,
+                    "final_top3_selected": len(selected),
+                    "final_selection_after_research": True,
+                },
             )
 
         def news_price(context: dict[str, object]) -> StageResult:
-            packs = list(context.get("research_packs") or [])
-            confirmed = sum(bool(pack.get("news_price_confirmation")) for pack in packs)
+            packs = list(dict(context.get("research_packs") or {}).values())
+            confirmed = sum(
+                pack.news_price_confirmation.get("state") == "confirmed" for pack in packs
+            )
             return StageResult(
                 status=StageStatus.SUCCEEDED if confirmed == len(packs) else StageStatus.PARTIAL,
                 output_count=confirmed,
@@ -226,9 +516,46 @@ class LMIOService:
             )
 
         def existing_output(context: dict[str, object]) -> StageResult:
+            transition_ids: list[str] = []
+            for candidate in list(context.get("top_10") or []):
+                evidence_urls = [
+                    item.source_url for item in candidate.evidence if item.source_url is not None
+                ]
+                transition = transition_candidate(
+                    symbol=candidate.symbol,
+                    strategy=candidate.strategy,
+                    previous_state=CandidateState.DISCOVERED,
+                    new_state=CandidateState.FILTERED,
+                    reason="Current-run deterministic ranking completed.",
+                    actor="screening-agent",
+                    evidence_urls=evidence_urls,
+                    run_id=str(context["run_id"]),
+                )
+                record_id = self.store.append_json(
+                    "candidate_transitions",
+                    {
+                        "symbol": transition.symbol,
+                        "strategy": transition.strategy,
+                        "previous_state": transition.previous_state,
+                        "new_state": transition.new_state,
+                        "payload": transition.model_dump(mode="json"),
+                    },
+                )
+                transition_ids.append(f"candidate-transition-{record_id}")
+            context["candidate_transition_ids"] = transition_ids
+            current_plans = [
+                item
+                for item in self.store.history_json("conditional_plans", 200)
+                if str(dict(item.get("payload") or {}).get("run_id")) == str(context["run_id"])
+            ]
+            context["current_run_plans"] = current_plans
             return StageResult(
-                output_count=len(list(context.get("top_10") or [])),
-                evidence_references=["store:candidate_transitions", "store:conditional_plans"],
+                output_count=len(transition_ids) + len(current_plans),
+                evidence_references=transition_ids,
+                details={
+                    "candidate_transitions": len(transition_ids),
+                    "same_run_conditional_plans": len(current_plans),
+                },
             )
 
         def daily_brief(context: dict[str, object]) -> StageResult:
@@ -258,46 +585,104 @@ class LMIOService:
                 evidence_references=["store:telegram_deliveries"],
             )
 
-        def health(_: dict[str, object]) -> StageResult:
+        def health(context: dict[str, object]) -> StageResult:
             checks = (
                 self.store.connectivity_check(),
                 self.store.schema_check(),
                 self.store.record_count_check(),
             )
             healthy = all(check.get("status") == "ok" for check in checks)
+            lineage_payload = {
+                "run_id": context["run_id"],
+                "provider_snapshot_ids": dict(context.get("snapshot_ids") or {}),
+                "screening_run_id": context.get("screen_run_id"),
+                "candidate_ids": dict(context.get("candidate_ids") or {}),
+                "top10_ranking_ids": list(context.get("top10_ranking_ids") or []),
+                "valuation_input_ids": dict(context.get("valuation_input_ids") or {}),
+                "valuation_ids": dict(context.get("valuation_ids") or {}),
+                "research_pack_ids": dict(context.get("research_ids") or {}),
+                "top3_evaluation_ids": list(context.get("top3_evaluation_ids") or []),
+                "conditional_plan_ids": [
+                    int(item["id"]) for item in list(context.get("current_run_plans") or [])
+                ],
+                "signal_ids": [],
+                "outcome_ids": [],
+                "report_id": context.get("report_id"),
+                "provenance": sorted(
+                    {item.provenance.value for item in list(context.get("top_10") or [])}
+                ),
+                "external_governance_integration": "planned_not_executed",
+            }
+            lineage_id = self.store.append_json(
+                "operational_lineage",
+                {
+                    "run_id": str(context["run_id"]),
+                    "state": "recorded",
+                    "payload": lineage_payload,
+                },
+            )
+            context["lineage_id"] = f"operational-lineage-{lineage_id}"
             return StageResult(
                 status=StageStatus.SUCCEEDED if healthy else StageStatus.PARTIAL,
                 output_count=len(checks),
                 warning_count=0 if healthy else 1,
-                evidence_references=["runtime:connectivity", "runtime:schema", "runtime:counts"],
+                evidence_references=[
+                    "runtime:connectivity",
+                    "runtime:schema",
+                    "runtime:counts",
+                    str(context["lineage_id"]),
+                ],
+                details={"lineage_id": context["lineage_id"]},
             )
 
-        def signal_creation(context: dict[str, object]) -> StageResult:
-            report = dict(context.get("report") or {})
-            selected = list(dict(report.get("top_3_status") or {}).get("evaluations") or [])
-            approved = [item for item in selected if item.get("state") == "top3_selected"]
-            if not approved:
+        def signal_eligibility(context: dict[str, object]) -> StageResult:
+            selected = list(context.get("top3_selected") or [])
+            plans = list(context.get("current_run_plans") or [])
+            approval_events = self.store.history_json("trade_plan_transitions", 200)
+            ready_plans = [
+                item
+                for item in plans
+                if str(item.get("state")) in {"plan_ready", "monitoring"}
+                and any(
+                    str(event.get("symbol", "")).upper() == str(item.get("symbol", "")).upper()
+                    and str(event.get("new_state")) == "plan_ready"
+                    and str(dict(event.get("payload") or {}).get("run_id"))
+                    == str(context["run_id"])
+                    and str(dict(event.get("payload") or {}).get("actor", "lmio-system"))
+                    != "lmio-system"
+                    for event in approval_events
+                )
+            ]
+            eligible_symbols = {item.symbol.upper() for item in selected} & {
+                str(item.get("symbol", "")).upper() for item in ready_plans
+            }
+            if not eligible_symbols:
                 return StageResult(
                     status=StageStatus.PARTIAL,
                     warning_count=1,
-                    error_summary="No evidence-complete Top 3 candidate is approved for a signal.",
-                    evidence_references=["store:top3_evaluations"],
+                    error_summary="No selected candidate has an authenticated approved plan.",
+                    evidence_references=list(context.get("top3_evaluation_ids") or []),
+                    details={
+                        "eligible": 0,
+                        "signals_created": 0,
+                        "operator_action_required": True,
+                    },
                 )
             return StageResult(
-                status=StageStatus.PARTIAL,
-                warning_count=len(approved),
-                error_summary="Formal signals require an authenticated approved conditional plan.",
-                evidence_references=["store:conditional_plans", "store:top3_evaluations"],
+                status=StageStatus.SUCCEEDED,
+                output_count=len(eligible_symbols),
+                evidence_references=list(context.get("top3_evaluation_ids") or []),
+                details={
+                    "eligible": len(eligible_symbols),
+                    "signals_created": 0,
+                    "operator_action_required": True,
+                },
             )
 
         def due_outcomes(_: dict[str, object]) -> StageResult:
             result = self.process_due_outcomes()
             return StageResult(
-                status=(
-                    StageStatus.SUCCEEDED
-                    if result["failed"] == 0
-                    else StageStatus.PARTIAL
-                ),
+                status=(StageStatus.SUCCEEDED if result["failed"] == 0 else StageStatus.PARTIAL),
                 output_count=int(result["completed"]),
                 warning_count=int(result["unavailable"]),
                 error_summary=(
@@ -310,9 +695,7 @@ class LMIOService:
             result = self.aggregate_strategy_performance()
             return StageResult(
                 status=(
-                    StageStatus.SUCCEEDED
-                    if result["eligible_outcomes"]
-                    else StageStatus.SKIPPED
+                    StageStatus.SUCCEEDED if result["eligible_outcomes"] else StageStatus.SKIPPED
                 ),
                 output_count=int(result["summaries"]),
                 evidence_references=["store:strategy_performance"],
@@ -336,12 +719,155 @@ class LMIOService:
             15: existing_output,
             16: daily_brief,
             17: telegram,
-            18: signal_creation,
+            18: signal_eligibility,
             19: due_outcomes,
             20: performance,
             21: health,
         }
-        return OperationalPipeline(self.store, handlers).run()
+        return OperationalPipeline(self.store, handlers).run(
+            initial_context={
+                "valuation_evidence_by_symbol": valuation_evidence_by_symbol or {},
+            }
+        )
+
+    def create_signal_from_approved_plan(self, plan_id: int, *, actor: str) -> dict[str, object]:
+        """Create research signal evidence after authenticated plan approval.
+
+        This is a decision-support record only. It has no broker, order or
+        execution side effect.
+        """
+
+        plan_row = next(
+            (
+                item
+                for item in self.store.history_json("conditional_plans", 200)
+                if int(item["id"]) == plan_id
+            ),
+            None,
+        )
+        if plan_row is None:
+            raise ValueError("Conditional plan does not exist")
+        plan_payload = dict(plan_row.get("payload") or {})
+        if str(plan_row.get("state")) not in {"plan_ready", "monitoring"}:
+            raise ValueError("Conditional plan has not been approved")
+        run_id = str(plan_payload.get("run_id", ""))
+        symbol = str(plan_row.get("symbol", "")).upper()
+        if not run_id or not symbol:
+            raise ValueError("Plan lineage is incomplete")
+        approval = next(
+            (
+                item
+                for item in self.store.history_json("trade_plan_transitions", 200)
+                if str(item.get("symbol", "")).upper() == symbol
+                and str(item.get("new_state")) == "plan_ready"
+                and str(dict(item.get("payload") or {}).get("run_id")) == run_id
+                and str(dict(item.get("payload") or {}).get("actor")) == actor
+            ),
+            None,
+        )
+        if approval is None:
+            raise ValueError("Plan approval must be attributable to this authenticated operator")
+        expires_at = datetime.fromisoformat(str(plan_payload["expires_at"]).replace("Z", "+00:00"))
+        if expires_at <= datetime.now(UTC):
+            raise ValueError("Conditional plan has expired")
+
+        evaluation = next(
+            (
+                item
+                for item in self.store.history_json("top3_evaluations", 200)
+                if str(item.get("symbol", "")).upper() == symbol
+                and str(dict(item.get("payload") or {}).get("run_id")) == run_id
+                and str(item.get("state")) == "top3_selected"
+            ),
+            None,
+        )
+        ranking = next(
+            (
+                item
+                for item in self.store.history_json("top10_rankings", 200)
+                if str(item.get("symbol", "")).upper() == symbol
+                and str(item.get("run_id")) == run_id
+            ),
+            None,
+        )
+        if evaluation is None or ranking is None:
+            raise ValueError("Selected candidate lineage is unavailable")
+        ranked = RankedCandidate.model_validate(ranking["payload"])
+
+        snapshots = self.store.history_json("provider_snapshots", 200)
+        symbol_snapshot = next(
+            (item for item in snapshots if str(item.get("symbol", "")).upper() == symbol), None
+        )
+        benchmark_snapshot = next(
+            (item for item in snapshots if str(item.get("symbol", "")).upper() == "SPY"), None
+        )
+        if symbol_snapshot is None or benchmark_snapshot is None:
+            raise ValueError("Current symbol and SPY snapshots are required")
+        observed_at = datetime.fromisoformat(
+            str(symbol_snapshot["observed_at"]).replace("Z", "+00:00")
+        )
+        benchmark_observed_at = datetime.fromisoformat(
+            str(benchmark_snapshot["observed_at"]).replace("Z", "+00:00")
+        )
+        current = datetime.now(UTC)
+        symbol_stale = current - observed_at > timedelta(hours=24)
+        benchmark_stale = current - benchmark_observed_at > timedelta(hours=24)
+        if symbol_stale or benchmark_stale:
+            raise ValueError("Current market evidence is stale")
+        symbol_payload = dict(symbol_snapshot.get("payload") or {})
+        benchmark_payload = dict(benchmark_snapshot.get("payload") or {})
+        signal_price = symbol_payload.get("price")
+        benchmark_price = benchmark_payload.get("price")
+        if signal_price is None or benchmark_price is None:
+            raise ValueError("Current market prices are unavailable")
+
+        signal_id = (
+            "signal-"
+            + hashlib.sha256(
+                f"{run_id}:{plan_id}:{symbol}:{observed_at.isoformat()}".encode()
+            ).hexdigest()[:20]
+        )
+        signal = SignalRecord(
+            signal_id=signal_id,
+            run_id=run_id,
+            candidate_id=ranked.candidate_id,
+            symbol=symbol,
+            strategy=ranked.candidate.strategy,
+            created_at=current,
+            signal_price=float(signal_price),
+            benchmark="SPY",
+            benchmark_price=float(benchmark_price),
+            source_snapshot_ids=[
+                f"provider-snapshot-{symbol_snapshot['id']}",
+                f"provider-snapshot-{benchmark_snapshot['id']}",
+            ],
+            scores=ranked.candidate.scores,
+            candidate_state=ranked.candidate.state,
+            plan_id=str(plan_id),
+            approved_by=actor,
+            invalidation_conditions=[str(plan_payload["invalidation_condition"])],
+            provenance=ranked.candidate.provenance,
+            model_versions={
+                "scores": ranked.candidate.scores.calculation_version,
+                "signal": "signal-evidence-v1",
+            },
+        )
+        record_id = self.store.append_json(
+            "signals",
+            {
+                "symbol": symbol,
+                "strategy": signal.strategy,
+                "state": "active_research_signal",
+                "payload": signal.model_dump(mode="json"),
+            },
+        )
+        return {
+            "id": record_id,
+            "signal_id": signal_id,
+            "run_id": run_id,
+            "status": "created",
+            "execution_capability": False,
+        }
 
     @staticmethod
     def _outcome_due_times(signal_time: datetime) -> dict[str, datetime]:
@@ -382,24 +908,59 @@ class LMIOService:
         current = now or datetime.now(UTC)
         signals = self.store.history_json("signals", 200)
         existing = self.store.history_json("signal_outcomes", 200)
-        completed_keys = {
-            (str(dict(item.get("payload") or {}).get("signal_id")), str(item["horizon"]))
-            for item in existing
-            if dict(item.get("payload") or {}).get("status") == "completed"
-        }
+        latest_status: dict[tuple[str, str], str] = {}
+        for item in existing:
+            key = (
+                str(dict(item.get("payload") or {}).get("signal_id")),
+                str(item["horizon"]),
+            )
+            latest_status.setdefault(key, str(dict(item.get("payload") or {}).get("status")))
         snapshot_rows = self.store.history_json("provider_snapshots", 200)
-        by_symbol: dict[str, list[TimedPrice]] = {}
+        parsed_snapshots: list[tuple[dict[str, object], dict[str, object], datetime]] = []
         for row in snapshot_rows:
             payload = dict(row.get("payload") or {})
             observed_at = datetime.fromisoformat(
                 str(row.get("observed_at") or payload.get("observed_at")).replace("Z", "+00:00")
             )
+            parsed_snapshots.append((row, payload, observed_at))
+        benchmark_rows = [
+            item
+            for item in parsed_snapshots
+            if str(item[0].get("symbol", "")).upper() == "SPY" and item[1].get("price") is not None
+        ]
+        by_symbol: dict[str, list[TimedPrice]] = {}
+        for row, payload, observed_at in parsed_snapshots:
             price = payload.get("price")
             if price is not None:
-                by_symbol.setdefault(str(row.get("symbol", "")).upper(), []).append(
-                    TimedPrice(observed_at=observed_at, price=float(price))
+                benchmark = min(
+                    benchmark_rows,
+                    key=lambda item: abs((item[2] - observed_at).total_seconds()),
+                    default=None,
                 )
-        counts = {"completed": 0, "not_due": 0, "unavailable": 0, "failed": 0}
+                benchmark_price = (
+                    float(benchmark[1]["price"])
+                    if benchmark is not None
+                    and abs((benchmark[2] - observed_at).total_seconds()) <= 15 * 60
+                    else None
+                )
+                references = [f"provider-snapshot-{row['id']}"]
+                if benchmark_price is not None and benchmark is not None:
+                    references.append(f"provider-snapshot-{benchmark[0]['id']}")
+                by_symbol.setdefault(str(row.get("symbol", "")).upper(), []).append(
+                    TimedPrice(
+                        observed_at=observed_at,
+                        price=float(price),
+                        benchmark_price=benchmark_price,
+                        evidence_reference="|".join(references),
+                    )
+                )
+        counts = {
+            "completed": 0,
+            "not_due": 0,
+            "unavailable": 0,
+            "failed": 0,
+            "unchanged": 0,
+        }
         for row in signals:
             try:
                 signal = SignalRecord.model_validate(row["payload"])
@@ -408,7 +969,9 @@ class LMIOService:
                 continue
             due_times = self._outcome_due_times(signal.created_at)
             for horizon, due_at in due_times.items():
-                if (signal.signal_id, horizon) in completed_keys:
+                key = (signal.signal_id, horizon)
+                if latest_status.get(key) == "completed":
+                    counts["unchanged"] += 1
                     continue
                 outcome = evaluate_timed_horizon(
                     horizon=horizon,
@@ -420,6 +983,13 @@ class LMIOService:
                     now=current,
                 )
                 counts[outcome.status.value] += 1
+                if latest_status.get(key) == outcome.status.value:
+                    counts["unchanged"] += 1
+                    continue
+                outcome_id = (
+                    "outcome-"
+                    + hashlib.sha256(f"{signal.signal_id}:{horizon}".encode()).hexdigest()[:20]
+                )
                 self.store.append_json(
                     "signal_outcomes",
                     {
@@ -433,9 +1003,39 @@ class LMIOService:
                         "payload": {
                             **asdict(outcome),
                             "status": outcome.status,
+                            "outcome_id": outcome_id,
                             "signal_id": signal.signal_id,
+                            "run_id": signal.run_id,
                             "due_at": due_at.isoformat(),
+                            "actual_observation_time": (
+                                outcome.actual_observation_time.isoformat()
+                                if outcome.actual_observation_time
+                                else None
+                            ),
                             "evaluated_at": current.isoformat(),
+                            "signal_price": signal.signal_price,
+                            "benchmark_signal_price": signal.benchmark_price,
+                            "horizon_price": (
+                                round(signal.signal_price * (1 + outcome.return_pct), 6)
+                                if outcome.return_pct is not None
+                                else None
+                            ),
+                            "benchmark_horizon_price": (
+                                round(
+                                    signal.benchmark_price * (1 + outcome.benchmark_return_pct),
+                                    6,
+                                )
+                                if outcome.benchmark_return_pct is not None
+                                else None
+                            ),
+                            "invalidation_status": (
+                                "triggered"
+                                if outcome.invalidation_triggered is True
+                                else "not_triggered"
+                                if outcome.invalidation_triggered is False
+                                else "not_evaluated"
+                            ),
+                            "evidence_references": list(outcome.evidence_references),
                         },
                     },
                 )

@@ -10,9 +10,9 @@
       "requires": ["FINVIZ_API_TOKEN"]
     },
     {
-      "id": "after-open-price-news-verification",
-      "purpose": "After-open market refresh and news-price verification input",
-      "command": "python -m lmio.cli scheduled-job --job-id after-open-price-news-verification",
+      "id": "after-open-finviz-refresh",
+      "purpose": "After-open authorised Finviz refresh and concise observation delivery",
+      "command": "python -m lmio.cli scheduled-job --job-id after-open-finviz-refresh",
       "schedule": {"weekdays": [0, 1, 2, 3, 4], "hour_utc": 15, "minute_utc": 45},
       "requires": ["FINVIZ_API_TOKEN"]
     },

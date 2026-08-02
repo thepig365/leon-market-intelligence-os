@@ -38,6 +38,9 @@ RECORD_KINDS = {
     "pipeline_runs",
     "pipeline_stages",
     "news_price_confirmations",
+    "top10_rankings",
+    "valuation_input_records",
+    "operational_lineage",
 }
 
 LATEST_KINDS = {"universe_runs", "screen_runs", "reports"}
@@ -68,6 +71,9 @@ COUNT_KINDS = (
     "pipeline_runs",
     "pipeline_stages",
     "news_price_confirmations",
+    "top10_rankings",
+    "valuation_input_records",
+    "operational_lineage",
 )
 
 
@@ -125,9 +131,9 @@ class SupabaseRuntimeStore:
     def schema_check(self) -> dict[str, Any]:
         versions = self.schema_versions()
         return {
-            "status": "ok" if versions and max(versions) >= 10 else "failed",
+            "status": "ok" if versions and max(versions) >= 12 else "failed",
             "schema_versions": versions,
-            "required_version": 10,
+            "required_version": 12,
         }
 
     def rls_check(self) -> dict[str, Any]:

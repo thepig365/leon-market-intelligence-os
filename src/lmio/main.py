@@ -173,13 +173,10 @@ async def telegram_webhook(request: Request) -> dict[str, str]:
             response = f"LMIO · {title}\n当前不可用：{status.get('message', '尚无合格候选。')}"
         else:
             lines = [
-                f"{index}. {item['symbol']} · {float(item['total_score']):.1f} · "
-                f"{item['strategy']}"
+                f"{index}. {item['symbol']} · {float(item['total_score']):.1f} · {item['strategy']}"
                 for index, item in enumerate(candidates, start=1)
             ]
-            response = "\n".join(
-                [f"LMIO · {title}", *lines, "数据若已过期会在候选详情中标明。"]
-            )
+            response = "\n".join([f"LMIO · {title}", *lines, "数据若已过期会在候选详情中标明。"])
     elif normalised.lower() == "/news":
         events = get_service().latest_news(limit=5)
         if not events:
@@ -189,8 +186,7 @@ async def telegram_webhook(request: Request) -> dict[str, str]:
                 [
                     "LMIO · 重要新闻",
                     *[
-                        f"- {item['headline']} · {item['source']} · "
-                        f"{item['published_at']}"
+                        f"- {item['headline']} · {item['source']} · {item['published_at']}"
                         for item in events
                     ],
                     "新闻只触发研究，必须由价格确认。",
@@ -560,6 +556,62 @@ def plan_history(limit: int = 50) -> list[dict[str, Any]]:
 @app.get("/api/v1/signals", tags=["research"])
 def signal_history(limit: int = 50) -> list[dict[str, Any]]:
     return get_service().store.history_json("signals", limit)
+
+
+@app.post("/api/v1/plans/{plan_id}/signal", tags=["research"])
+def create_research_signal(
+    plan_id: int,
+    principal: Annotated[Principal, Depends(require_admin)],
+) -> dict[str, object]:
+    try:
+        return get_service().create_signal_from_approved_plan(
+            plan_id,
+            actor=principal.actor_id,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.get("/api/v1/audit/lineage/{run_id}", tags=["system"])
+def operational_lineage(run_id: str) -> dict[str, Any]:
+    """Return safe evidence references for one run; never licensed source rows."""
+
+    lineage = next(
+        (
+            item
+            for item in get_service().store.history_json("operational_lineage", 200)
+            if str(item.get("run_id")) == run_id
+        ),
+        None,
+    )
+    if lineage is None:
+        raise HTTPException(status_code=404, detail="Operational lineage not found.")
+    signals = [
+        {
+            "id": item["id"],
+            "signal_id": dict(item.get("payload") or {}).get("signal_id"),
+            "candidate_id": dict(item.get("payload") or {}).get("candidate_id"),
+        }
+        for item in get_service().store.history_json("signals", 200)
+        if str(dict(item.get("payload") or {}).get("run_id")) == run_id
+    ]
+    outcomes = [
+        {
+            "id": item["id"],
+            "signal_id": dict(item.get("payload") or {}).get("signal_id"),
+            "horizon": item.get("horizon"),
+            "status": dict(item.get("payload") or {}).get("status"),
+        }
+        for item in get_service().store.history_json("signal_outcomes", 200)
+        if str(dict(item.get("payload") or {}).get("run_id")) == run_id
+    ]
+    return {
+        "run_id": run_id,
+        "lineage": lineage["payload"],
+        "signals": signals,
+        "outcomes": outcomes,
+        "raw_provider_rows_exposed": False,
+    }
 
 
 @app.get("/api/v1/performance", tags=["research"])

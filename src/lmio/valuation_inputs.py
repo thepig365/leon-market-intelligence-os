@@ -10,7 +10,7 @@ from lmio.domain import DataProvenance, ValuationInput
 
 class FinancialEvidence(BaseModel):
     symbol: str
-    company_type: str = "operating_company"
+    company_type: str = "mature_non_financial"
     provenance: DataProvenance
     observed_at: datetime
     source_fields: dict[str, float | None]
@@ -44,7 +44,19 @@ REQUIRED_ASSUMPTIONS = (
     "discount_rate",
     "forecast_years",
 )
-UNSUPPORTED_COMPANY_TYPES = {"bank", "insurer", "reit", "pre_revenue"}
+SPECIALIST_COMPANY_TYPES = {
+    "bank": "bank_equity_and_book_value_model_required",
+    "insurer": "insurer_book_value_and_underwriting_model_required",
+    "reit": "reit_ffo_and_nav_model_required",
+    "unprofitable_growth": "revenue_and_unit_economics_model_required",
+}
+STANDARD_ROUTES = {
+    "operating_company": "mature_non_financial",
+    "mature_non_financial": "mature_non_financial",
+    "high_growth_high_capex": "high_growth_high_capex",
+    "cyclical": "normalised_cycle",
+    "commodity_sensitive": "normalised_commodity_cycle",
+}
 
 
 def prepare_valuation_input(evidence: FinancialEvidence) -> PreparedValuationInput:
@@ -61,11 +73,22 @@ def prepare_valuation_input(evidence: FinancialEvidence) -> PreparedValuationInp
             assumptions=evidence.assumptions,
             missing_fields=["operational provenance"],
         )
-    if evidence.company_type.lower() in UNSUPPORTED_COMPANY_TYPES:
+    company_type = evidence.company_type.lower()
+    if company_type in SPECIALIST_COMPANY_TYPES:
         return PreparedValuationInput(
             symbol=evidence.symbol,
             status="unsupported",
-            route=f"specialist_model_required:{evidence.company_type.lower()}",
+            route=SPECIALIST_COMPANY_TYPES[company_type],
+            source_fields=evidence.source_fields,
+            source_references=evidence.source_references,
+            derived_calculations={},
+            assumptions=evidence.assumptions,
+        )
+    if company_type not in STANDARD_ROUTES:
+        return PreparedValuationInput(
+            symbol=evidence.symbol,
+            status="unsupported",
+            route=f"unsupported_company_type:{company_type}",
             source_fields=evidence.source_fields,
             source_references=evidence.source_references,
             derived_calculations={},
@@ -122,7 +145,7 @@ def prepare_valuation_input(evidence: FinancialEvidence) -> PreparedValuationInp
     return PreparedValuationInput(
         symbol=evidence.symbol,
         status="ready",
-        route="standard_operating_company",
+        route=STANDARD_ROUTES.get(company_type, f"unsupported_company_type:{company_type}"),
         source_fields=evidence.source_fields,
         source_references=evidence.source_references,
         derived_calculations={"strict_fcf": strict_fcf},

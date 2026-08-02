@@ -44,9 +44,7 @@ def _provider_statuses(store: Any, settings: Settings) -> dict[str, dict[str, ob
         started = _parse_time(ingestion.get("retrieval_started_at"))
         finished = _parse_time(ingestion.get("retrieval_completed_at"))
         latency_ms = (
-            int((finished - started).total_seconds() * 1000)
-            if started and finished
-            else None
+            int((finished - started).total_seconds() * 1000) if started and finished else None
         )
         result[provider] = {
             "configured": configured.get(provider, True),
@@ -107,20 +105,14 @@ def build_system_health(store: Any, settings: Settings) -> dict[str, object]:
     pipeline_payload = dict(pipeline.get("payload") or {}) if pipeline else {}
     pipeline_stages = store.history_json("pipeline_stages", 50) if pipeline else []
     failed_or_blocked = next(
-        (
-            item
-            for item in reversed(pipeline_stages)
-            if item.get("status") in {"failed", "blocked"}
-        ),
+        (item for item in reversed(pipeline_stages) if item.get("status") in {"failed", "blocked"}),
         None,
     )
     freshness = {
         "market_snapshot": _latest_freshness(
             store, "provider_snapshots", DataType.MARKET_SNAPSHOT, source="market"
         ),
-        "sec": _latest_freshness(
-            store, "ownership_events", DataType.SEC_FILING, source="sec"
-        ),
+        "sec": _latest_freshness(store, "ownership_events", DataType.SEC_FILING, source="sec"),
         "macro_news": _latest_freshness(
             store, "provider_health", DataType.MACRO_RELEASE, source="official_macro"
         ),
@@ -133,12 +125,8 @@ def build_system_health(store: Any, settings: Settings) -> dict[str, object]:
         "valuations": _latest_freshness(
             store, "valuation_runs", DataType.VALUATION, source="valuation"
         ),
-        "top_10": _latest_freshness(
-            store, "reports", DataType.TOP_10, source="daily_report"
-        ),
-        "top_3": _latest_freshness(
-            store, "top3_evaluations", DataType.TOP_3, source="top3"
-        ),
+        "top_10": _latest_freshness(store, "reports", DataType.TOP_10, source="daily_report"),
+        "top_3": _latest_freshness(store, "top3_evaluations", DataType.TOP_3, source="top3"),
         "research_packages": _latest_freshness(
             store, "research_packs", DataType.RESEARCH_PACKAGE, source="research"
         ),

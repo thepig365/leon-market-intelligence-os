@@ -180,17 +180,13 @@ def format_symbol_research(
     scores = item.get("scores") if isinstance(item.get("scores"), dict) else {}
     value = valuation or {}
     news_state = (
-        latest_news.get("confirmation_state", "尚无已确认事件")
-        if latest_news
-        else "尚无已确认事件"
+        latest_news.get("confirmation_state", "尚无已确认事件") if latest_news else "尚无已确认事件"
     )
     age = datetime.now(UTC) - snapshot.observed_at.astimezone(UTC)
     stale = age > timedelta(hours=24)
     score_lines = [
         f"排名：{item.get('rank', '未进入当前 Top 10')}",
-        (
-            "四维评分：质量 {quality} / 价值 {valuation} / 机会 {opportunity} / 时机 {timing}"
-        ).format(
+        ("四维评分：质量 {quality} / 价值 {valuation} / 机会 {opportunity} / 时机 {timing}").format(
             quality=scores.get("quality", "—"),
             valuation=scores.get("valuation", "—"),
             opportunity=scores.get("opportunity", "—"),

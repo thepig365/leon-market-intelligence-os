@@ -80,8 +80,8 @@ def assess_news_price(
         latest = post_event[-1]
         stock_return = (latest.price - pre_event.price) / pre_event.price
         benchmark_return = (
-            (latest.benchmark_price - pre_event.benchmark_price) / pre_event.benchmark_price
-        )
+            latest.benchmark_price - pre_event.benchmark_price
+        ) / pre_event.benchmark_price
         abnormal = round(stock_return - benchmark_return, 6)
         relative_volume = latest.relative_volume
         if latest.vwap is not None:

@@ -56,5 +56,5 @@ def test_builder_routes_unsupported_companies_safely() -> None:
     prepared = prepare_valuation_input(evidence(company_type="bank"))
 
     assert prepared.status == "unsupported"
-    assert prepared.route == "specialist_model_required:bank"
+    assert prepared.route == "bank_equity_and_book_value_model_required"
     assert prepared.valuation_input is None

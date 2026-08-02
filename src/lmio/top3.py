@@ -51,12 +51,11 @@ def evaluate_top3(
             if state is Top3EligibilityState.SCREENED:
                 state = Top3EligibilityState.RESEARCH_PENDING
         else:
-            completed = 15 - min(len(research.missing_information), 15)
-            research_completeness = completed / 15
+            research_completeness = research.mandatory_completion
             if research.provenance is not candidate.provenance:
                 blocked.append("research provenance does not match market evidence")
                 state = Top3EligibilityState.REJECTED
-            elif research.missing_information:
+            elif research_completeness < 1:
                 blocked.append("research evidence is incomplete")
                 if state not in {
                     Top3EligibilityState.REJECTED,

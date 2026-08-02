@@ -94,12 +94,8 @@ def test_outbox_claim_is_atomic_and_drain_reuses_original_delivery_key(tmp_path:
     message = "等待出站队列"
     assert queue_or_send(store, message, dedupe_context="run-123") == "queued_not_configured"
 
-    first = store.claim_telegram_deliveries(
-        claim_token="worker-one", limit=10, max_attempts=3
-    )
-    second = store.claim_telegram_deliveries(
-        claim_token="worker-two", limit=10, max_attempts=3
-    )
+    first = store.claim_telegram_deliveries(claim_token="worker-one", limit=10, max_attempts=3)
+    second = store.claim_telegram_deliveries(claim_token="worker-two", limit=10, max_attempts=3)
     assert len(first) == 1
     assert second == []
 

@@ -28,6 +28,7 @@ class StageResult(BaseModel):
     retry_count: int = Field(default=0, ge=0)
     error_summary: str | None = None
     evidence_references: list[str] = Field(default_factory=list)
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 class PipelineStage(BaseModel):
@@ -44,6 +45,7 @@ class PipelineStage(BaseModel):
     retry_count: int = Field(default=0, ge=0)
     error_summary: str | None = None
     evidence_references: list[str] = Field(default_factory=list)
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 STAGE_NAMES = (
@@ -58,17 +60,16 @@ STAGE_NAMES = (
     "top_10_generation",
     "valuation_input_preparation",
     "valuation_and_applicability_routing",
-    "top_3_eligibility_and_selection",
+    "top_3_preliminary_eligibility",
     "fifteen_field_research_package",
     "news_price_confirmation",
     "candidate_and_conditional_plan_updates",
     "chinese_daily_brief",
     "telegram_queue_and_delivery",
-    "signal_creation",
+    "signal_eligibility_check",
     "due_outcome_updates",
     "strategy_performance_aggregation",
     "health_summary",
-    "bayview_os_narrow_write_back",
 )
 
 # Failure of current market data makes analytical output misleading. Other
@@ -80,7 +81,7 @@ StageHandler = Callable[[dict[str, Any]], StageResult]
 
 
 class OperationalPipeline:
-    """Execute exactly one canonical 22-stage run and persist each outcome."""
+    """Execute one canonical run and persist every truthful stage outcome."""
 
     def __init__(self, store: Any, handlers: dict[int, StageHandler]) -> None:
         self.store = store
@@ -133,6 +134,7 @@ class OperationalPipeline:
                 retry_count=result.retry_count,
                 error_summary=result.error_summary,
                 evidence_references=result.evidence_references,
+                details=result.details,
             )
             stages.append(stage)
             if result.status is StageStatus.FAILED and order in CRITICAL_STAGE_ORDERS:

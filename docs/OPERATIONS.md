@@ -3,6 +3,11 @@
 Operational claims require stored run evidence. A build or fixture replay is
 not a successful scheduled market-data run. Canonical jobs live in
 `config/scheduler_manifest.json` and execute through `lmio scheduled-job`.
+The manifest uses fixed UTC slots. Each call acquires an atomic idempotency key
+for the intended schedule window and records scheduled, started and completed
+times, run ID where available, lock state and duplicate skips. The automatic
+executor remains `not_verified` until an actual executor is deployed and
+observed.
 
 ## Operating boundary
 
@@ -45,6 +50,19 @@ Chinese Telegram brief. It preserves the previous successful run if Finviz is
 unavailable. Use the admin-protected manual refresh endpoint for an additional
 operator-requested update; do not poll more often than the provider licence and
 rate limits permit.
+
+The after-open job is deliberately named `after-open-finviz-refresh`: it only
+performs the authorised Finviz refresh and concise observation delivery. It does
+not claim to complete news-price verification. The after-close job progresses
+due outcomes, aggregates strategy/horizon performance, stores a concise Chinese
+report and queues or sends that report through the Telegram outbox.
+
+The canonical pipeline has 21 executable stages. Bayview OS narrow write-back
+is not an executable stage; it remains a planned external governance
+integration. The pipeline performs signal eligibility checks but never creates
+a signal automatically. A formal signal can only be created through the
+admin-protected operator endpoint after the authenticated operator has approved
+the same-run conditional plan.
 
 The official-news run is separate and read-only. It collects allowlisted
 Federal Reserve monetary-policy releases and BLS CPI, PPI, employment and JOLTS

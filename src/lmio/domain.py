@@ -231,6 +231,8 @@ class CandidateTransition(BaseModel):
 
 class SignalRecord(BaseModel):
     signal_id: str
+    run_id: str
+    candidate_id: str
     symbol: str
     strategy: Strategy
     created_at: datetime
@@ -241,6 +243,7 @@ class SignalRecord(BaseModel):
     scores: DimensionScores
     candidate_state: CandidateState
     plan_id: str
+    approved_by: str
     invalidation_conditions: list[str]
     provenance: DataProvenance
     model_versions: dict[str, str]

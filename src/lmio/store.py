@@ -9,7 +9,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 MIGRATION = """
 CREATE TABLE IF NOT EXISTS schema_versions (
     version INTEGER PRIMARY KEY,
@@ -48,6 +48,32 @@ CREATE TABLE IF NOT EXISTS news_events (
 CREATE TABLE IF NOT EXISTS news_price_confirmations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol TEXT,
+    state TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS top10_rankings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    rank INTEGER NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(run_id, symbol)
+);
+CREATE TABLE IF NOT EXISTS valuation_input_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    candidate_id TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    status TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(run_id, candidate_id)
+);
+CREATE TABLE IF NOT EXISTS operational_lineage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL UNIQUE,
     state TEXT NOT NULL,
     payload TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -399,13 +425,9 @@ class RuntimeStore:
                     "ALTER TABLE telegram_deliveries ADD COLUMN last_attempt_at TEXT"
                 )
             if "claim_token" not in telegram_columns:
-                connection.execute(
-                    "ALTER TABLE telegram_deliveries ADD COLUMN claim_token TEXT"
-                )
+                connection.execute("ALTER TABLE telegram_deliveries ADD COLUMN claim_token TEXT")
             if "claimed_at" not in telegram_columns:
-                connection.execute(
-                    "ALTER TABLE telegram_deliveries ADD COLUMN claimed_at TEXT"
-                )
+                connection.execute("ALTER TABLE telegram_deliveries ADD COLUMN claimed_at TEXT")
             connection.execute(
                 """
                 INSERT OR IGNORE INTO schema_versions(version)
@@ -466,6 +488,15 @@ class RuntimeStore:
                 SELECT 10
                 WHERE EXISTS (
                     SELECT 1 FROM schema_versions WHERE version = 9
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO schema_versions(version)
+                SELECT 11
+                WHERE EXISTS (
+                    SELECT 1 FROM schema_versions WHERE version = 10
                 )
                 """
             )
@@ -572,6 +603,9 @@ class RuntimeStore:
             "pipeline_runs",
             "pipeline_stages",
             "news_price_confirmations",
+            "top10_rankings",
+            "valuation_input_records",
+            "operational_lineage",
         }
         if table not in allowed:
             raise ValueError(f"unsupported append table: {table}")
@@ -643,6 +677,9 @@ class RuntimeStore:
             "pipeline_runs",
             "pipeline_stages",
             "news_price_confirmations",
+            "top10_rankings",
+            "valuation_input_records",
+            "operational_lineage",
         }
         if table not in allowed:
             raise ValueError(f"unsupported history table: {table}")
@@ -689,6 +726,9 @@ class RuntimeStore:
             "pipeline_runs",
             "pipeline_stages",
             "news_price_confirmations",
+            "top10_rankings",
+            "valuation_input_records",
+            "operational_lineage",
         )
         with self.connection() as connection:
             return {

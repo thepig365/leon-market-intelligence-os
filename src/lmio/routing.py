@@ -63,8 +63,6 @@ def route_models(company_type: CompanyType) -> ModelRoute:
         ),
         required_alternative_method=[] if supported else ROUTES[company_type],
         missing_evidence=(
-            []
-            if supported
-            else ["specialised_model_inputs", "independent_model_review"]
+            [] if supported else ["specialised_model_inputs", "independent_model_review"]
         ),
     )

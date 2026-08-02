@@ -8,18 +8,19 @@ State: **Draft — independent review required; not operationally accepted**
 
 ## Executive summary
 
-LMIO now has one fail-closed, evidence-bearing 22-stage research pipeline. It
+LMIO now has one fail-closed, evidence-bearing 21-stage research pipeline. It
 keeps authorised, synthetic and fixture provenance separate; evaluates Top 3
-eligibility rather than forcing three names; routes unsupported valuations to
-appropriate methods; records source-linked research, plans, signals, outcomes,
-provider health and scheduler history; and exposes a Chinese operator console
-and private Telegram query interface. No broker, order, live-trading or
-paper-trading capability exists.
+eligibility before final same-run selection; builds versioned valuation inputs;
+routes supported company types to applicable valuation methods; and records
+source-linked research, plans, signals, outcomes, provider health, scheduler
+history and a protected run-lineage chain. Actual signal creation is a separate
+authenticated operator action after plan approval. No broker, order,
+live-trading or paper-trading capability exists.
 
-Code existence and automated verification are complete for the approved P0 and
-most P1/P2 controls. Operational acceptance remains blocked by the explicitly
-external gates below. In particular, this report does not describe a fixture,
-build or endpoint as proof of a live scheduled service.
+Code existence and local automated verification are complete for this focused
+remediation. Operational acceptance remains blocked by the explicitly external
+gates below. In particular, this report does not describe a fixture, build,
+manifest or callable job as proof of a live scheduled service.
 
 ## Six-level evidence vocabulary
 
@@ -41,31 +42,40 @@ build or endpoint as proof of a live scheduled service.
 | Top 10 / Top 3 eligibility | Yes | Yes | Yes | Pending live run | Pending | Pending |
 | SEC fault tolerance | Yes | Yes | Yes | Prior bounded read recorded; new run pending | Pending | Pending |
 | Finviz ingestion | Yes | Yes | Yes | Credentialed run pending | Pending | Pending |
-| 22-stage pipeline | Yes | Yes | Yes | Pending | Pending | Pending |
+| 21-stage pipeline | Yes | Yes | Yes | Pending | Pending | Pending |
 | Valuation routing | Yes | Yes | Yes | Current-company set pending | N/A | Pending |
 | 15-field research | Yes | Yes | Yes | Pending | Pending | Pending |
 | News + stored price confirmation | Yes | Yes | Yes | Pending | Pending | Pending |
-| Signals / outcomes / performance | Yes | Yes | Yes | Pending horizon evidence | Pending | Pending |
+| Signal eligibility / operator-created signals / outcomes | Yes | Yes | Yes | Pending horizon evidence | Pending | Pending |
 | Telegram interface | Yes | Yes | Yes | Prior private delivery recorded | Drain schedule pending | Partial |
 | Dashboard and System Health | Yes | Yes | Build passes | Production smoke pending | N/A | Pending |
-| Bayview OS write-back | Boundary documented | Yes | N/A | Not implemented | N/A | Planned |
+| Bayview OS write-back | Removed from executable pipeline | Yes | N/A | Not implemented | N/A | Planned external governance integration |
 
 ## Functional evidence
 
-- Canonical pipeline: `src/lmio/pipeline.py`; manifest:
+- Canonical 21-stage pipeline: `src/lmio/pipeline.py`; manifest:
   `config/scheduler_manifest.json`; scheduler: `src/lmio/scheduler.py`.
-- Immutable runtime evidence: schema versions 7–11 and `src/lmio/store.py`.
+- Immutable runtime evidence: schema versions 7–12 and `src/lmio/store.py`.
 - Provenance isolation: operational latest views exclude synthetic and fixture
   records; dashboard watermarks non-operational data.
-- Top 3: `src/lmio/top3.py` persists eligibility state and structured blocking
-  reasons; no forced selection.
-- Research: `src/lmio/research.py` produces the governed 15-field package with
-  evidence classifications.
+- Ranking: `src/lmio/ranking.py` deterministically deduplicates symbols, applies
+  confidence, completeness and freshness penalties, persists ranking reasons,
+  and excludes non-operational provenance.
+- Valuation: Stage 10 persists same-run versioned inputs; Stage 11 routes and
+  persists method applicability, assumptions, sensitivity and results without
+  using zero for missing or not-applicable values.
+- Top 3 and research: Stage 12 is preliminary eligibility only; Stage 13 creates
+  same-run 15-field research packages and performs final selection using the
+  current run's candidates, valuations, snapshots and evidence classifications.
 - News: `src/lmio/news_price.py`; the analysis API no longer accepts a
   client-supplied price reaction and only creates a draft plan from a persisted,
   complete confirmation.
-- Plans: stored snapshot reference, expiry, authenticated creator, transition
-  actor, time and run ID are required.
+- Plans and signals: stored snapshot reference, expiry, authenticated creator,
+  transition actor, time and run ID are required. The pipeline only checks
+  signal eligibility. The protected operator endpoint creates a formal signal
+  only after the same authenticated operator approves a complete current plan.
+- Outcomes: 1h, close, 1d, 5d and 20d preserve target and actual observation
+  time, benchmark pairing, evidence references and unavailable rather than zero.
 - Telegram: allowlisted chat, concise Chinese commands, freshness warning,
   atomic outbox claim, bounded retry and terminal failure state.
 - Health: application, provider, freshness, pipeline and safety layers are
@@ -78,6 +88,7 @@ build or endpoint as proof of a live scheduled service.
 - `009_operational_pipeline.sql`
 - `010_scheduler_and_telegram_claims.sql`
 - `011_news_price_evidence.sql`
+- `012_operational_lineage.sql`
 
 These migrations are additive. They have **not** been applied to protected
 production by this task because that is a separate production approval gate.
@@ -88,23 +99,32 @@ Passed on 2026-08-02:
 
 ```text
 Python Ruff: passed
-Python pytest: passed (full suite)
+Python pytest: passed (210 tests)
+Python dependency audit: no known vulnerabilities
 Dashboard ESLint: passed
 Dashboard type check: passed
 Dashboard contract test: passed (13 modules)
 Dashboard production build: passed
+Dashboard dependency audit: 0 vulnerabilities
 git diff --check: passed
 ```
 
 ## Evidence by acceptance topic
 
-- Top 10 / Top 3: fixture evidence in `tests/test_store_and_service.py` and
-  `tests/test_top3.py`; real current run pending.
-- Research package: `tests/test_research.py`; real selected-company package pending.
+- Top 10 / Top 3: deterministic shuffled-input and duplicate-symbol evidence in
+  `tests/test_ranking.py`; same-run integration evidence in
+  `tests/test_operational_pipeline.py`; real current run pending.
+- Research package: same-run 15-field integration evidence in
+  `tests/test_operational_pipeline.py`; real selected-company package pending.
 - Telegram: contract, retry, rate limit and atomic-claim tests pass; private
   historical live delivery is documented, but this branch needs a fresh smoke test.
-- Outcomes: all five horizons and unknown-versus-zero semantics are tested;
-  live 1h/close/1d progression is pending.
+- Signal and outcomes: `tests/test_signal_lifecycle.py` proves that an unapproved
+  plan cannot create a signal, an authenticated operator-approved plan can, and
+  1h/close/1d progress from timestamped prices while 5d/20d remain not due.
+- Scheduler: same-window locking and fixed UTC behavior across Melbourne
+  daylight-saving changes are tested. `executor_process` remains `not_verified`.
+- Lineage API: the protected endpoint is tested to return evidence references
+  without licensed raw provider rows.
 - Failure recovery: Finviz, SEC per-filing, RSS, stale evidence, missing valuation,
   Telegram and unavailable outcome paths fail closed in automated tests.
 - Security: missing/incorrect credentials are rejected, actors come from verified
@@ -115,7 +135,8 @@ git diff --check: passed
 
 1. A redacted Finviz refresh using currently authorised credentials.
 2. Protected preview/production smoke tests for read rejection and dashboard login.
-3. Additive Supabase migrations and RLS verification in the protected project.
+3. Additive Supabase migrations 007–012 and RLS verification in an isolated,
+   approved Supabase project.
 4. Three consecutive US trading days of unattended executor evidence. The report
    date is a Sunday, so this cannot truthfully be completed now.
 5. Real Top 10 and justified Top 3/no-Top-3 output from those runs.
@@ -138,7 +159,8 @@ licensed rows and private Telegram content are intentionally absent here.
 
 - Deployment: not performed by this task.
 - Merge: prohibited pending Leon and independent review.
-- Bayview write-back: only this milestone, blockers, commit/PR and evidence links
-  may be recorded; no market data or detailed runtime logs belong in Bayview OS.
+- Bayview write-back: removed from the executable pipeline. A narrow external
+  governance integration remains planned; no market data or detailed runtime
+  logs belong in Bayview OS.
 
 **No live trading, paper trading, broker connection or order-execution capability was added.**

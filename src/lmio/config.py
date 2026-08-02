@@ -70,9 +70,7 @@ class Settings(BaseSettings):
     telegram_bot_token: SecretStr = Field(
         default=SecretStr(""), validation_alias="TELEGRAM_BOT_TOKEN"
     )
-    telegram_chat_id: SecretStr = Field(
-        default=SecretStr(""), validation_alias="TELEGRAM_CHAT_ID"
-    )
+    telegram_chat_id: SecretStr = Field(default=SecretStr(""), validation_alias="TELEGRAM_CHAT_ID")
     telegram_webhook_secret: SecretStr = Field(
         default=SecretStr(""),
         validation_alias="TELEGRAM_WEBHOOK_SECRET",

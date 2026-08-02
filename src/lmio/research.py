@@ -25,6 +25,9 @@ class ResearchStatement(BaseModel):
 
 class ResearchPack(BaseModel):
     symbol: str
+    run_id: str | None = None
+    candidate_id: str | None = None
+    valuation_id: str | None = None
     provenance: DataProvenance = DataProvenance.TEST_FIXTURE
     company_profile: str
     what_changed: str
@@ -51,6 +54,36 @@ class ResearchPack(BaseModel):
     source_snapshot_ids: list[str] = Field(default_factory=list)
     invalidation_conditions: list[str] = Field(default_factory=list)
     news_price_confirmation: dict[str, object] = Field(default_factory=dict)
+
+    @property
+    def mandatory_completion(self) -> float:
+        """Return completion from the 15 governed fields, not container existence."""
+
+        mandatory = (
+            "business_model",
+            "revenue_structure",
+            "industry_position",
+            "competitive_advantage",
+            "management_and_capital_allocation",
+            "financial_quality",
+            "growth_drivers",
+            "earnings_revisions",
+            "institutional_ownership",
+            "insider_activity",
+            "valuation",
+            "catalysts",
+            "risks",
+            "bear_case_and_contrary_evidence",
+            "conditional_plan_and_invalidation",
+        )
+        completed = 0
+        for name in mandatory:
+            statements = self.fields.get(name) or []
+            if statements and all(
+                item.classification is not StatementClass.MISSING for item in statements
+            ):
+                completed += 1
+        return completed / len(mandatory)
 
 
 def build_research_pack(

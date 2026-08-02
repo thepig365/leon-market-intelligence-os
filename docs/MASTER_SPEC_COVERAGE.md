@@ -33,9 +33,10 @@ external provider or protected production environment has been activated.
 | Directional reaction windows, VWAP, opening range and gap retention | Implemented | `news_plan.py`, API and news-plan tests |
 | Three valuation perspectives and sensitivity | Implemented for supported company types; multi-model output combines applicable DCF and approved market-multiple inputs | `valuation.py`, `routing.py` |
 | Banks, REITs, unprofitable and cyclical routing | Safely blocked from generic DCF | `routing.py`, tests |
-| Top 10 required fields | Implemented | `ScreenCandidate`, reports |
-| Top 3 decision cards | Implemented | `DecisionCard`, reports |
-| 15-field research package | Implemented | `research.py` |
+| Deterministic Top 10 ranking | Implemented with symbol dedupe, stable tie-breaks, confidence/completeness/freshness penalties and persisted reasons | `ranking.py`, `tests/test_ranking.py` |
+| Top 3 decision cards | Implemented as preliminary eligibility followed by same-run final selection after valuation and research | `top3.py`, `service.py`, operational-pipeline tests |
+| 15-field research package | Implemented and bound to the current run, candidate, snapshots and valuation | `research.py`, operational-pipeline tests |
+| Provider-to-outcome lineage | Implemented with protected, redacted audit API | migration 012, `GET /api/v1/audit/lineage/{run_id}`, API tests |
 | Kimi research worker | Implemented as bounded manual workflow | `providers/research.py`, `RESEARCH_WORKERS.md` |
 | OpenAI synthesis adapter | Implemented, disabled pending approved configuration and live debug | `providers/research.py`, tests |
 
@@ -47,7 +48,8 @@ external provider or protected production environment has been activated.
 | Candidate transition actor/reason/evidence | Implemented | migration 003, `service.py` |
 | Exact conditional-plan state lifecycle | Implemented | `plans.py` |
 | Paper-ready/open transitions blocked in V1 | Implemented | `plans.py`, tests |
-| Signal outcomes at 1h/close/1d/5d/20d/strategy | Implemented | `outcomes.py` |
+| Authenticated signal creation | Implemented as a separate operator action after approved-plan and freshness gates; scheduled pipeline performs eligibility only | `service.py`, `POST /api/v1/plans/{plan_id}/signal`, signal tests |
+| Signal outcomes at 1h/close/1d/5d/20d/strategy | Implemented with actual observation times, benchmark lineage and unavailable-not-zero semantics | `outcomes.py`, signal lifecycle tests |
 | Hit rate, false positives, drawdown and benchmarks | Implemented | `outcomes.py` |
 | User approval/rejection evidence API | Implemented, protected | `POST /api/v1/feedback` |
 
@@ -60,7 +62,8 @@ external provider or protected production environment has been activated.
 | Supporting/contrary evidence and strategy controls | Implemented | `MarketRegime` |
 | 13 dashboard routes | Implemented | `apps/dashboard`, dashboard verification and build |
 | Runtime APIs for reports, screens, valuations, candidates, research, news, ownership, plans, signals, performance, watchlists | Implemented | `main.py` |
-| Premarket, after-open, after-close, news, SEC, Telegram drain and weekend jobs | Executable and fixture-tested; scheduled live evidence pending | `config/scheduler_manifest.json`, `src/lmio/scheduler.py` |
+| Premarket, after-open, after-close, news, SEC, Telegram drain and weekend jobs | Callable and fixture-tested with same-window locks. After-open is truthfully scoped to Finviz refresh; after-close progresses outcomes, aggregates performance, stores a Chinese report and queues/sends Telegram. Executor remains not verified. | `config/scheduler_manifest.json`, `src/lmio/scheduler.py`, scheduler tests |
+| Bayview OS write-back stage | Not in the executable pipeline; planned external governance integration only | `pipeline.py`, acceptance report |
 | Telegram grouping, dedupe, rate-limit, queued release and bounded retry | Implemented | `telegram.py`, schema v5, tests |
 | Telegram live delivery | Verified privately on 2026-07-31 | One Chinese non-trading alert sent; one attempt; identical repeat deduplicated; secrets remain Keychain-only |
 | Live market/fundamental/revision provider | Pending approved provider/export | external gate |
