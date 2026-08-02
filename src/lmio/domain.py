@@ -228,6 +228,23 @@ class CandidateTransition(BaseModel):
     occurred_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+class SignalRecord(BaseModel):
+    signal_id: str
+    symbol: str
+    strategy: Strategy
+    created_at: datetime
+    signal_price: float = Field(gt=0)
+    benchmark: str
+    benchmark_price: float = Field(gt=0)
+    source_snapshot_ids: list[str]
+    scores: DimensionScores
+    candidate_state: CandidateState
+    plan_id: str
+    invalidation_conditions: list[str]
+    provenance: DataProvenance
+    model_versions: dict[str, str]
+
+
 class ValuationInput(BaseModel):
     symbol: str
     provenance: DataProvenance = DataProvenance.TEST_FIXTURE
