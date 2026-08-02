@@ -109,6 +109,35 @@ def test_after_close_job_stores_report_and_queues_delivery(tmp_path: Path) -> No
     assert report["payload"]["execution_capability"] is False
 
 
+def test_telegram_webhook_job_uses_protected_runtime_url(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "runtime.sqlite3",
+        TELEGRAM_BOT_TOKEN="123456789:abcdefghijklmnopqrstuvwxyzABCDE",
+        TELEGRAM_WEBHOOK_SECRET="private-webhook-secret",
+        LMIO_PUBLIC_BASE_URL="https://runtime.example/",
+    )
+    service = LMIOService(settings)
+    captured: dict[str, str] = {}
+
+    def fake_ensure(**kwargs: str) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"status": "ready", "webhook_configured": True}
+
+    monkeypatch.setattr("lmio.scheduler.ensure_private_webhook", fake_ensure)
+    result = run_scheduled_job(
+        service,
+        "telegram-webhook-ensure",
+        now=datetime(2026, 8, 3, 1, tzinfo=UTC),
+    )
+
+    assert result["status"] == "ready"
+    assert captured["webhook_url"] == "https://runtime.example/api/v1/telegram/webhook"
+
+
 def test_failed_scheduler_job_records_auditable_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

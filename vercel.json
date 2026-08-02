@@ -25,6 +25,10 @@
       "schedule": "15 0 * * *"
     },
     {
+      "path": "/api/v1/scheduler/telegram-webhook-ensure",
+      "schedule": "5 0 * * *"
+    },
+    {
       "path": "/api/v1/scheduler/weekend-strategy-data-quality-review",
       "schedule": "0 14 * * 6"
     }

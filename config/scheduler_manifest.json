@@ -45,6 +45,13 @@
       "requires": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"]
     },
     {
+      "id": "telegram-webhook-ensure",
+      "purpose": "Verify and restore the approved private Telegram query webhook",
+      "command": "python -m lmio.cli scheduled-job --job-id telegram-webhook-ensure",
+      "schedule": {"weekdays": [0, 1, 2, 3, 4, 5, 6], "hour_utc": 0, "minute_utc": 5},
+      "requires": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "LMIO_PUBLIC_BASE_URL"]
+    },
+    {
       "id": "weekend-strategy-data-quality-review",
       "purpose": "Weekend strategy evidence and data-quality summary",
       "command": "python -m lmio.cli scheduled-job --job-id weekend-strategy-data-quality-review",

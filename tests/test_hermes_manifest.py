@@ -16,6 +16,7 @@ def test_scheduler_manifest_maps_every_required_purpose_to_safe_code() -> None:
         "official-news-refresh",
         "sec-refresh",
         "telegram-outbox-drain",
+        "telegram-webhook-ensure",
         "weekend-strategy-data-quality-review",
     }
     assert all("python -m lmio.cli scheduled-job" in job["command"] for job in manifest["jobs"])

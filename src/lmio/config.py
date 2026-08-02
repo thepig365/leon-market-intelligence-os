@@ -75,6 +75,7 @@ class Settings(BaseSettings):
         default=SecretStr(""),
         validation_alias="TELEGRAM_WEBHOOK_SECRET",
     )
+    public_base_url: str = Field(default="", validation_alias="LMIO_PUBLIC_BASE_URL")
     finviz_api_token: SecretStr = Field(
         default=SecretStr(""),
         validation_alias="FINVIZ_API_TOKEN",

@@ -92,6 +92,11 @@ messages from every chat except `TELEGRAM_CHAT_ID`. A ticker query calls the
 official Finviz API for that symbol; it does not invent missing fields, place an
 order or enable paper/live trading.
 
+The daily `telegram-webhook-ensure` job verifies that Telegram is still pointing
+to `LMIO_PUBLIC_BASE_URL/api/v1/telegram/webhook` and restores that exact private
+webhook if it has drifted. It never returns the bot token, webhook secret or
+approved chat identifier to the dashboard.
+
 The synthetic demo is for replay testing only:
 
 ```bash

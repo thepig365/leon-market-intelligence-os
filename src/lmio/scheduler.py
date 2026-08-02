@@ -10,7 +10,13 @@ from typing import TYPE_CHECKING, Any
 
 from lmio.providers.sec import SECProvider
 from lmio.sec_monitor import monitor_sec
-from lmio.telegram import MessageKind, drain_outbox, format_message, queue_or_send
+from lmio.telegram import (
+    MessageKind,
+    drain_outbox,
+    ensure_private_webhook,
+    format_message,
+    queue_or_send,
+)
 
 if TYPE_CHECKING:
     from lmio.service import LMIOService
@@ -188,6 +194,15 @@ def _execute(service: LMIOService, job_id: str) -> dict[str, object]:
             service.store,
             bot_token=service.settings.telegram_bot_token.get_secret_value(),
             chat_id=service.settings.telegram_chat_id.get_secret_value(),
+        )
+    if job_id == "telegram-webhook-ensure":
+        base_url = service.settings.public_base_url.strip().rstrip("/")
+        if not base_url:
+            raise RuntimeError("LMIO public base URL is not configured")
+        return ensure_private_webhook(
+            bot_token=service.settings.telegram_bot_token.get_secret_value(),
+            webhook_secret=service.settings.telegram_webhook_secret.get_secret_value(),
+            webhook_url=f"{base_url}/api/v1/telegram/webhook",
         )
     if job_id == "weekend-strategy-data-quality-review":
         from lmio.health_console import build_system_health

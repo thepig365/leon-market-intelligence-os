@@ -6,9 +6,58 @@ from lmio.telegram import (
     MAX_MESSAGE_CHARS,
     MessageKind,
     drain_outbox,
+    ensure_private_webhook,
     format_message,
     queue_or_send,
 )
+
+
+def test_private_webhook_is_registered_without_exposing_credentials() -> None:
+    calls: list[tuple[str, bytes]] = []
+
+    def transport(url: str, body: bytes, _timeout: float, _max_bytes: int) -> bytes:
+        calls.append((url, body))
+        if url.endswith("/getWebhookInfo"):
+            return b'{"ok":true,"result":{"url":"","pending_update_count":0}}'
+        return b'{"ok":true,"result":true,"description":"Webhook was set"}'
+
+    result = ensure_private_webhook(
+        bot_token="123456789:abcdefghijklmnopqrstuvwxyzABCDE",
+        webhook_secret="private-webhook-secret",
+        webhook_url="https://runtime.example/api/v1/telegram/webhook",
+        transport=transport,
+    )
+
+    assert result == {"status": "configured", "webhook_configured": True}
+    assert len(calls) == 2
+    assert calls[0][0].endswith("/getWebhookInfo")
+    assert calls[1][0].endswith("/setWebhook")
+    assert b"runtime.example%2Fapi%2Fv1%2Ftelegram%2Fwebhook" in calls[1][1]
+
+
+def test_private_webhook_ready_state_does_not_register_again() -> None:
+    calls: list[str] = []
+
+    def transport(url: str, _body: bytes, _timeout: float, _max_bytes: int) -> bytes:
+        calls.append(url)
+        return (
+            b'{"ok":true,"result":{"url":"https://runtime.example/api/v1/telegram/webhook",'
+            b'"pending_update_count":2}}'
+        )
+
+    result = ensure_private_webhook(
+        bot_token="123456789:abcdefghijklmnopqrstuvwxyzABCDE",
+        webhook_secret="private-webhook-secret",
+        webhook_url="https://runtime.example/api/v1/telegram/webhook",
+        transport=transport,
+    )
+
+    assert result == {
+        "status": "ready",
+        "webhook_configured": True,
+        "pending_update_count": 2,
+    }
+    assert len(calls) == 1
 
 VALID_TOKEN = "123456789:abcdefghijklmnopqrstuvwxyz_123456"
 VALID_CHAT_ID = "-1001234567890"

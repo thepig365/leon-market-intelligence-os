@@ -114,6 +114,59 @@ def valid_webhook_secret(provided: str | None, expected: str) -> bool:
     return bool(provided and expected and hmac.compare_digest(provided, expected))
 
 
+def ensure_private_webhook(
+    *,
+    bot_token: str,
+    webhook_secret: str,
+    webhook_url: str,
+    transport: TelegramTransport | None = None,
+) -> dict[str, object]:
+    """Verify or register the one private Telegram webhook without exposing secrets."""
+
+    if not BOT_TOKEN_PATTERN.fullmatch(bot_token):
+        raise ValueError("Telegram bot credential is not configured correctly")
+    if not webhook_secret.strip():
+        raise ValueError("Telegram webhook secret is not configured")
+    if not webhook_url.startswith("https://"):
+        raise ValueError("Telegram webhook URL must use HTTPS")
+
+    send = transport or _default_transport
+    info_url = f"https://api.telegram.org/bot{bot_token}/getWebhookInfo"
+    info = json.loads(send(info_url, b"", 10.0, MAX_RESPONSE_BYTES))
+    current = info.get("result") if isinstance(info, dict) else None
+    if (
+        isinstance(current, dict)
+        and info.get("ok") is True
+        and current.get("url") == webhook_url
+        and not current.get("last_error_message")
+    ):
+        return {
+            "status": "ready",
+            "webhook_configured": True,
+            "pending_update_count": int(current.get("pending_update_count", 0)),
+        }
+
+    body = parse.urlencode(
+        {
+            "url": webhook_url,
+            "secret_token": webhook_secret,
+            "allowed_updates": json.dumps(["message"]),
+            "drop_pending_updates": "false",
+        }
+    ).encode()
+    registered = json.loads(
+        send(
+            f"https://api.telegram.org/bot{bot_token}/setWebhook",
+            body,
+            10.0,
+            MAX_RESPONSE_BYTES,
+        )
+    )
+    if not isinstance(registered, dict) or registered.get("ok") is not True:
+        raise RuntimeError("Telegram rejected the private webhook registration")
+    return {"status": "configured", "webhook_configured": True}
+
+
 def parse_symbol_query(text: str) -> str | None:
     """Accept a plain ticker or `/quote TICKER` and reject all other input."""
 
