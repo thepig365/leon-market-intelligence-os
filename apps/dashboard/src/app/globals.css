@@ -1,12 +1,17 @@
 :root {
-  --ink: #17211b;
-  --muted: #5e6862;
-  --line: #d8ded9;
-  --paper: #f3f5f1;
-  --surface: #ffffff;
-  --accent: #1e5138;
-  --accent-soft: #dceae1;
-  --warning: #7a5521;
+  color-scheme: dark;
+  --ink: #eef5f0;
+  --muted: #a7b5ac;
+  --line: #2a3a31;
+  --paper: #07100c;
+  --surface: #101b15;
+  --surface-raised: #14231b;
+  --accent: #79d39e;
+  --accent-deep: #1d5c3b;
+  --accent-soft: #173324;
+  --on-accent: #f4fff7;
+  --warning: #e3bb78;
+  --danger: #ff9b8c;
 }
 
 * {
@@ -18,6 +23,7 @@ body {
   background: var(--paper);
   color: var(--ink);
   font: 16px/1.55 Arial, "Noto Sans SC", sans-serif;
+  min-height: 100vh;
 }
 
 a {
@@ -25,7 +31,7 @@ a {
 }
 
 a:focus-visible {
-  outline: 3px solid #1f6a49;
+  outline: 3px solid #9be8ba;
   outline-offset: 4px;
 }
 
@@ -176,6 +182,7 @@ a:focus-visible {
   display: flex;
   justify-content: space-between;
   padding: 28px clamp(20px, 5vw, 72px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
 }
 
 .brand a {
@@ -232,7 +239,7 @@ a:focus-visible {
 .googleSignIn button:focus-visible,
 .signInForm button:focus-visible,
 .signInForm input:focus-visible {
-  outline: 3px solid #1f6a49;
+  outline: 3px solid #9be8ba;
   outline-offset: 3px;
 }
 
@@ -294,9 +301,9 @@ footer {
 }
 
 .googleSignIn button {
-  background: var(--accent);
+  background: var(--accent-deep);
   border: 0;
-  color: white;
+  color: var(--on-accent);
   cursor: pointer;
   font: inherit;
   font-weight: 700;
@@ -337,6 +344,7 @@ footer {
 }
 
 .signInForm input {
+  background: var(--paper);
   border: 1px solid var(--line);
   color: var(--ink);
   font: inherit;
@@ -345,9 +353,9 @@ footer {
 }
 
 .signInForm button {
-  background: var(--accent);
+  background: var(--accent-deep);
   border: 0;
-  color: white;
+  color: var(--on-accent);
   cursor: pointer;
   font: inherit;
   font-weight: 700;
@@ -355,9 +363,9 @@ footer {
 }
 
 .formError {
-  background: #fff1ee;
-  border: 1px solid #b34231;
-  color: #7b271d !important;
+  background: #351816;
+  border: 1px solid #c96557;
+  color: #ffb2a7 !important;
   padding: 12px;
 }
 
@@ -401,9 +409,9 @@ h1 {
 
 .syntheticWatermark {
   margin-top: 1.25rem;
-  border: 2px solid #9a3412;
-  background: #fff7ed;
-  color: #7c2d12;
+  border: 2px solid #d5874c;
+  background: #342116;
+  color: #ffc08e;
   padding: 0.8rem 1rem;
   font-weight: 800;
   letter-spacing: 0.04em;
@@ -528,7 +536,7 @@ h1 {
 .researchNotice {
   align-items: flex-start;
   background: var(--accent-soft);
-  border: 1px solid #bdd4c5;
+  border: 1px solid #315d43;
   display: flex;
   gap: 24px;
   justify-content: space-between;
@@ -576,7 +584,7 @@ h1 {
 
 .tickerLink {
   color: var(--accent);
-  text-decoration-color: #9cbcac;
+  text-decoration-color: #4f8e69;
   text-decoration-thickness: 2px;
   text-underline-offset: 5px;
 }
@@ -593,8 +601,8 @@ h1 {
 
 .rank {
   align-items: center;
-  background: var(--accent);
-  color: white;
+  background: var(--accent-deep);
+  color: var(--on-accent);
   display: inline-flex;
   font-size: 0.78rem;
   font-weight: 700;
@@ -689,8 +697,8 @@ h1 {
 }
 
 .chartLink:hover {
-  background: var(--accent);
-  color: white;
+  background: var(--accent-deep);
+  color: var(--on-accent);
 }
 
 .researchFooter {
@@ -1059,13 +1067,13 @@ h1 {
 }
 
 .warningList li {
-  border-left-color: #d7bd8b;
+  border-left-color: #a67c42;
 }
 
 .quickActions {
   align-items: flex-start;
-  background: var(--accent);
-  color: white;
+  background: var(--accent-deep);
+  color: var(--on-accent);
   display: grid;
   gap: 28px;
   grid-template-columns: minmax(220px, 0.8fr) 1.2fr;
@@ -1075,7 +1083,7 @@ h1 {
 
 .quickActions .eyebrow,
 .quickActions p {
-  color: #dceae1;
+  color: #cce9d7;
 }
 
 .quickActions h2,
@@ -1097,8 +1105,8 @@ h1 {
 }
 
 .quickActions a:hover {
-  background: white;
-  color: var(--accent);
+  background: var(--on-accent);
+  color: #15442d;
 }
 
 .auditFooter {
@@ -1403,9 +1411,9 @@ footer {
 
 .controlGrid button,
 .acceptanceChecklist button {
-  background: var(--accent);
+  background: var(--accent-deep);
   border: 1px solid var(--accent);
-  color: white;
+  color: var(--on-accent);
   cursor: pointer;
   font: inherit;
   font-weight: 800;
