@@ -48,6 +48,15 @@ def test_finviz_api_fetches_authorised_csv_without_exposing_token() -> None:
     assert calls[0][1]["auth"] == "private-token"
     assert provider.health().state is ProviderState.READY
     assert "private-token" not in provider.health().detail
+    evidence = provider.last_ingestion_evidence
+    assert evidence is not None
+    assert evidence["http_status"] == 200
+    assert evidence["row_count_received"] == 1
+    assert evidence["row_count_accepted"] == 1
+    assert evidence["row_count_rejected"] == 0
+    assert evidence["duplicate_count"] == 0
+    assert str(evidence["snapshot_id"]).startswith("finviz:")
+    assert len(str(evidence["checksum_sha256"])) == 64
 
 
 def test_finviz_api_limits_an_authorised_lookup_to_requested_symbols() -> None:
@@ -111,6 +120,10 @@ def test_refresh_runs_screen_and_queues_telegram_when_not_configured(tmp_path: P
     assert result["equities_received"] == 1
     assert result["telegram"] == "queued_not_configured"
     assert service.store.latest_provider_health()["state"] == "ready"
+    evidence = service.store.latest_provider_health()["payload"]["ingestion"]
+    assert evidence["provider"] == "finviz_elite_api"
+    assert evidence["row_count_accepted"] == 1
+    assert evidence["market_timestamp_basis"] == "retrieval_time_no_provider_timestamp"
 
 
 def test_refresh_preserves_existing_data_when_provider_fails(tmp_path: Path) -> None:

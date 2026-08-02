@@ -82,6 +82,14 @@ class FinvizCSVProvider(MarketDataProvider):
         self._accepted_rows = 0
         self._excluded_rows = 0
 
+    @property
+    def parse_counts(self) -> dict[str, int]:
+        return {
+            "accepted": self._accepted_rows,
+            "rejected": self._excluded_rows,
+            "duplicates": 0,
+        }
+
     def health(self) -> ProviderHealth:
         if not self._verified:
             return ProviderHealth(

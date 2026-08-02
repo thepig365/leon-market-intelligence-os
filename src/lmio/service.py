@@ -74,12 +74,13 @@ class LMIOService:
             raise RuntimeError("Finviz refresh failed safely") from error
 
         health = provider.health()
+        ingestion_evidence = provider.last_ingestion_evidence or {}
         self.store.append_json(
             "provider_health",
             {
                 "provider": health.provider,
                 "state": health.state.value,
-                "payload": {"detail": health.detail},
+                "payload": {"detail": health.detail, "ingestion": ingestion_evidence},
             },
         )
         report = self.run_daily(snapshots, data_mode=provider.name)

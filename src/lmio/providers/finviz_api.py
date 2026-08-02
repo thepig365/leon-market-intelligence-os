@@ -3,6 +3,7 @@
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
+from hashlib import sha256
 from time import sleep
 
 import httpx
@@ -60,6 +61,11 @@ class FinvizAPIProvider(MarketDataProvider):
                 else "Finviz API token is not configured"
             ),
         )
+        self._last_ingestion_evidence: dict[str, object] | None = None
+
+    @property
+    def last_ingestion_evidence(self) -> dict[str, object] | None:
+        return self._last_ingestion_evidence
 
     def health(self) -> ProviderHealth:
         return self._health
@@ -67,6 +73,8 @@ class FinvizAPIProvider(MarketDataProvider):
     def snapshots(self, symbols: list[str] | None = None) -> list[SecuritySnapshot]:
         if not self._api_token:
             raise RuntimeError("Finviz API is not configured")
+
+        retrieval_started = datetime.now(UTC)
 
         requested_symbols = sorted(
             {symbol.strip().upper() for symbol in (symbols or []) if symbol.strip()}
@@ -102,12 +110,35 @@ class FinvizAPIProvider(MarketDataProvider):
         ):
             raise ValueError("Finviz API returned an unexpected content type")
 
+        checksum = sha256(raw).hexdigest()
         parser = FinvizCSVProvider()
+        observed_at = datetime.now(UTC)
         snapshots = parser.parse(
             raw.decode("utf-8-sig"),
-            observed_at=datetime.now(UTC),
+            observed_at=observed_at,
             provenance=DataProvenance.LIVE_AUTHORISED,
         )
+        completed_at = datetime.now(UTC)
+        counts = parser.parse_counts
+        self._last_ingestion_evidence = {
+            "provider": self.name,
+            "endpoint": FINVIZ_EXPORT_URL,
+            "endpoint_version": "v=152",
+            "retrieval_started_at": retrieval_started.isoformat(),
+            "retrieval_completed_at": completed_at.isoformat(),
+            "market_timestamp": observed_at.isoformat(),
+            "market_timestamp_basis": "retrieval_time_no_provider_timestamp",
+            "timezone": "UTC",
+            "http_status": response.status_code,
+            "row_count_received": counts["accepted"] + counts["rejected"],
+            "row_count_accepted": counts["accepted"],
+            "row_count_rejected": counts["rejected"],
+            "duplicate_count": counts["duplicates"],
+            "missing_required_fields": [],
+            "stale_status": "fresh_at_retrieval",
+            "checksum_sha256": checksum,
+            "snapshot_id": f"finviz:{checksum[:24]}",
+        }
         self._health = ProviderHealth(
             provider=self.name,
             state=ProviderState.READY,
