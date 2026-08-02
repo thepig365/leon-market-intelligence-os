@@ -1364,6 +1364,15 @@ footer {
   font-size: 0.82rem;
 }
 
+.acceptanceFacts div,
+.acceptanceFacts strong {
+  min-width: 0;
+}
+
+.acceptanceFacts strong {
+  overflow-wrap: anywhere;
+}
+
 .stageList {
   display: grid;
   gap: 1px;

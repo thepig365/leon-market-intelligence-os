@@ -35,7 +35,8 @@ mandatory LMIO read credential plus Vercel short-lived OIDC trust; neither
 credential is sent to the browser. Both deployments remain protected and
 excluded from indexing.
 
-Approximately 390 px mobile verification and Leon's substantive review remain
-outstanding. The live evidence currently reports `degraded`, no completed
-21-stage pipeline run and missing provider evidence; the route is working, but
-operator acceptance is not represented as complete.
+Desktop and 390 px mobile verification passed with no page error or horizontal
+overflow. Leon's substantive review remains outstanding. The live evidence
+currently reports `degraded`, no completed 21-stage pipeline run and missing
+provider evidence; the route is working, but operator acceptance is not
+represented as complete.

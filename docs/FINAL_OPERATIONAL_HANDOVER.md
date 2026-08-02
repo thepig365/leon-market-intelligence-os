@@ -33,8 +33,9 @@ Release label: **LMIO v1.0 RC1 — Ready for Operator Acceptance**
 - the protected sign-in response and search-exclusion metadata were verified;
 - a signed-in desktop browser loaded the complete `/acceptance` evidence from
   the protected runtime through server-to-server OIDC trust;
-- mobile verification and Leon's substantive operator decisions remain
-  outstanding;
+- signed-in desktop and 390 px mobile verification passed without horizontal
+  overflow or browser errors;
+- Leon's substantive operator decisions remain outstanding;
 - no production deployment was performed.
 
 ## Current conclusion
