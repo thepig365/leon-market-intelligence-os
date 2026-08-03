@@ -441,7 +441,7 @@ function NewsPanel({ result }: { result: LMIOResult }) {
               </div>
               <p>{text(item.description)}</p>
               <p className="pageFootnote">
-                {available ? `最近发布：${date(item.latest_published_at)}` : "暂未取得已核验事件；不会以假资料填充。"}
+                {available ? `最新资料：${date(item.latest_published_at)}` : "暂未取得已核验事件；不会以假资料填充。"}
               </p>
             </article>
           );
@@ -478,7 +478,7 @@ function NewsPanel({ result }: { result: LMIOResult }) {
             <div><dt>置信度</dt><dd>{percent(event.confidence)}</dd></div>
             <div><dt>系统动作</dt><dd>{text(event.system_action, "研究与观察，不执行交易")}</dd></div>
           </dl>
-          <p className="pageFootnote">发布时间：{date(event.published_at)}</p>
+          <p className="pageFootnote">资料时间：{date(event.published_at)}</p>
         </article>
         );
       })}
