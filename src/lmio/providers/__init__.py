@@ -15,6 +15,8 @@ from .contracts import (
 from .csv_snapshot import CSVSnapshotProvider
 from .finviz_csv import FinvizCSVProvider
 from .research import (
+    NewsSynthesis,
+    OpenAINewsWorker,
     OpenAIResearchWorker,
     ResearchSynthesis,
     build_kimi_manual_packet,
@@ -32,6 +34,8 @@ __all__ = [
     "InstitutionalProvider",
     "MarketDataProvider",
     "NewsProvider",
+    "NewsSynthesis",
+    "OpenAINewsWorker",
     "OpenAIResearchWorker",
     "Provider",
     "ProviderHealth",

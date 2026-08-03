@@ -5,6 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from lmio.providers import (
+    OpenAINewsWorker,
     OpenAIResearchWorker,
     ProviderState,
     build_kimi_manual_packet,
@@ -64,6 +65,49 @@ def test_openai_worker_sends_minimal_server_side_structured_request() -> None:
     assert captured["authorization"] == "Bearer secret-test-key"
     assert result["order_created"] is False
     assert result["provider"] == "openai_research"
+
+
+def test_openai_news_worker_uses_no_tools_and_reports_usage() -> None:
+    captured: dict[str, object] = {}
+
+    def transport(request: Request, timeout: float) -> dict[str, object]:
+        captured["body"] = json.loads(request.data or b"{}")
+        return {
+            "output_text": json.dumps(
+                {
+                    "summary": "官方事件元数据已记录。",
+                    "trading_focus": "核对价格和成交量反应。",
+                    "investing_focus": "核对长期现金流影响。",
+                    "missing_information": "未提供具体披露数字。",
+                    "confidence": 0.6,
+                }
+            ),
+            "usage": {"input_tokens": 120, "output_tokens": 80},
+        }
+
+    worker = OpenAINewsWorker(
+        api_key="secret-test-key",
+        model="gpt-5.6-luna",
+        transport=transport,
+    )
+    result = worker.analyse(
+        {
+            "headline": "Official release",
+            "event_type": "macro_inflation_cpi",
+            "source": "BLS",
+        }
+    )
+
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert body["store"] is False
+    assert body["model"] == "gpt-5.6-luna"
+    assert body["max_output_tokens"] == 500
+    assert body["reasoning"] == {"effort": "low"}
+    assert "tools" not in body
+    assert "source_url" not in body["input"]
+    assert result["usage"] == {"input_tokens": 120, "output_tokens": 80}
+    assert result["order_created"] is False
 
 
 def test_manual_kimi_packet_and_output_are_evidence_bounded() -> None:

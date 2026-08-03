@@ -22,6 +22,7 @@ RECORD_KINDS = {
     "reports",
     "signal_outcomes",
     "system_events",
+    "ai_usage",
     "research_packs",
     "conditional_plans",
     "provider_health",
@@ -55,6 +56,7 @@ COUNT_KINDS = (
     "signal_outcomes",
     "telegram_deliveries",
     "system_events",
+    "ai_usage",
     "research_packs",
     "conditional_plans",
     "provider_health",
@@ -385,6 +387,32 @@ class SupabaseRuntimeStore:
             headers={"Prefer": "resolution=ignore-duplicates,return=representation"},
         )
         return bool(response.json())
+
+    def update_news_event(self, fingerprint: str, payload: dict[str, Any]) -> bool:
+        response = self._request(
+            "PATCH",
+            "lmio_news_events",
+            params={"fingerprint": f"eq.{fingerprint}"},
+            json={"payload": payload},
+            headers={"Prefer": "return=representation"},
+        )
+        return bool(response.json())
+
+    def ai_usage_total(self, month_start: str, next_month_start: str) -> float:
+        response = self._request(
+            "GET",
+            "lmio_records",
+            params={
+                "select": "payload",
+                "kind": "eq.ai_usage",
+                "created_at": f"gte.{month_start}",
+                "and": f"(created_at.lt.{next_month_start})",
+                "limit": "10000",
+            },
+        )
+        return sum(
+            float((item.get("payload") or {}).get("cost_usd", 0)) for item in response.json()
+        )
 
     def put_ownership_event(
         self,

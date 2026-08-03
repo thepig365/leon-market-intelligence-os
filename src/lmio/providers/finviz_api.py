@@ -20,9 +20,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 FINVIZ_EXPORT_URL = "https://elite.finviz.com/export/screener"
-FINVIZ_COLUMNS = (
-    "1,2,3,4,5,129,6,8,22,23,39,40,34,38,45,54,127,64,63,67,65,66,59,29,30,31"
-)
+FINVIZ_COLUMNS = "1,2,3,4,5,129,6,8,22,23,39,40,34,38,45,54,127,64,63,67,65,66,59,29,30,31"
 VIX_HISTORY_URL = "https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv"
 FinvizTransport = Callable[[str, dict[str, str], float], httpx.Response]
 VixTransport = Callable[[str, float], httpx.Response]
@@ -201,8 +199,7 @@ class FinvizAPIProvider(MarketDataProvider):
         missing = {"SPY", "QQQ", "IWM"} - self._benchmark_changes.keys()
         if missing:
             raise ValueError(
-                "Finviz market snapshot is missing benchmark changes: "
-                + ", ".join(sorted(missing))
+                "Finviz market snapshot is missing benchmark changes: " + ", ".join(sorted(missing))
             )
         breadth_values = [
             item.daily_change_pct for item in snapshots if item.daily_change_pct is not None

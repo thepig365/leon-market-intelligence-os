@@ -33,8 +33,8 @@ export const dashboardSections: DashboardSection[] = [
     slug: "news-trading",
     label: "新闻研究",
     eyebrow: "TRADE WITH NEWS",
-    description: "官方来源事件、影响评分、反应窗口与条件计划证据。",
-    endpoint: "/api/v1/news",
+    description: "美联储、通胀、就业与 SEC 官方事件的摘要、交易观察和投资重点。",
+    endpoint: "/api/v1/news/research-board",
   },
   {
     slug: "institutional-insider",

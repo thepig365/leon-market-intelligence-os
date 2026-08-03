@@ -88,7 +88,16 @@ class Settings(BaseSettings):
         default=SecretStr(""),
         validation_alias="OPENAI_API_KEY",
     )
-    openai_model: str = Field(default="", validation_alias="LMIO_OPENAI_MODEL")
+    openai_model: str = Field(default="gpt-5.6-luna", validation_alias="LMIO_OPENAI_MODEL")
+    openai_monthly_cap_usd: float = Field(
+        default=5.0, ge=0, le=5.0, validation_alias="LMIO_OPENAI_MONTHLY_CAP_USD"
+    )
+    openai_input_usd_per_million: float = Field(
+        default=1.0, ge=0, validation_alias="LMIO_OPENAI_INPUT_USD_PER_MILLION"
+    )
+    openai_output_usd_per_million: float = Field(
+        default=6.0, ge=0, validation_alias="LMIO_OPENAI_OUTPUT_USD_PER_MILLION"
+    )
     admin_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="LMIO_ADMIN_API_KEY")
     owner_identity: str = Field(default="leon", validation_alias="LMIO_OWNER_IDENTITY")
     release_sha: str = Field(default="unrecorded", validation_alias="LMIO_RELEASE_SHA")

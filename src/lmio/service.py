@@ -19,12 +19,14 @@ from lmio.domain import (
     SignalRecord,
     ValuationResult,
 )
+from lmio.news import event_fingerprint
 from lmio.official_news_monitor import monitor_official_news
 from lmio.outcomes import TimedPrice, evaluate_timed_horizon
 from lmio.pipeline import OperationalPipeline, StageResult, StageStatus
 from lmio.providers.base import ProviderState
 from lmio.providers.finviz_api import FinvizAPIProvider
 from lmio.providers.official_rss import OfficialRSSProvider
+from lmio.providers.research import OpenAINewsWorker
 from lmio.providers.sec import SECProvider
 from lmio.ranking import RankedCandidate, rank_top10
 from lmio.reports import build_daily_report, classify_regime, unverified_regime
@@ -211,9 +213,7 @@ class LMIOService:
             )
             return StageResult(
                 status=(
-                    StageStatus.SUCCEEDED
-                    if regime.label != "Unverified"
-                    else StageStatus.PARTIAL
+                    StageStatus.SUCCEEDED if regime.label != "Unverified" else StageStatus.PARTIAL
                 ),
                 output_count=len(snapshots),
                 warning_count=int(regime.label == "Unverified"),
@@ -552,9 +552,7 @@ class LMIOService:
                 top,
                 universe_checked=len(snapshots),
                 investable=len(list(context.get("investable") or [])),
-                regime=MarketRegime.model_validate(
-                    context.get("regime") or unverified_regime()
-                ),
+                regime=MarketRegime.model_validate(context.get("regime") or unverified_regime()),
                 data_mode=provider.name,
                 valuations=valuations,
                 research_packs=packs,
@@ -1284,6 +1282,7 @@ class LMIOService:
 
         if not self.settings.sec_user_agent.strip():
             result["sec"] = {"status": "disabled", "detail": "SEC_USER_AGENT is not configured"}
+            result["ai_summaries"] = self.summarise_latest_news()
             return result
 
         configured = self.settings.parsed_sec_watchlist()
@@ -1326,7 +1325,94 @@ class LMIOService:
             },
         )
         result["sec"] = sec
+        result["ai_summaries"] = self.summarise_latest_news()
         return result
+
+    def summarise_latest_news(self, limit: int = 12) -> dict[str, object]:
+        """Add bounded AI summaries to unsummarised official events, failing closed."""
+
+        api_key = self.settings.openai_api_key.get_secret_value().strip()
+        if not api_key:
+            return {"status": "disabled", "summarised": 0, "detail": "API key not configured"}
+
+        now = datetime.now(UTC)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if month_start.month == 12:
+            next_month = month_start.replace(year=month_start.year + 1, month=1)
+        else:
+            next_month = month_start.replace(month=month_start.month + 1)
+        used = self.store.ai_usage_total(month_start.isoformat(), next_month.isoformat())
+        cap = self.settings.openai_monthly_cap_usd
+        reserve = (
+            2_000 * self.settings.openai_input_usd_per_million
+            + 500 * self.settings.openai_output_usd_per_million
+        ) / 1_000_000
+        if used + reserve > cap:
+            return {"status": "cap_reached", "summarised": 0, "spent_usd": round(used, 6)}
+
+        worker = OpenAINewsWorker(
+            api_key=api_key,
+            model=self.settings.openai_model,
+        )
+        summarised = 0
+        failed = 0
+        for stored in self.latest_news(limit=max(1, min(limit, 25))):
+            if isinstance(stored.get("ai_summary"), dict):
+                continue
+            if used + reserve > cap:
+                break
+            event = NewsEvent.model_validate(stored)
+            minimal = {
+                "headline": event.headline,
+                "event_type": event.event_type,
+                "source": event.source,
+                "published_at": event.published_at.isoformat(),
+                "symbols": event.symbols,
+                "significance": event.significance,
+            }
+            try:
+                result = worker.analyse(minimal)
+            except Exception as error:
+                failed += 1
+                self.store.append_json(
+                    "provider_health",
+                    {
+                        "provider": worker.name,
+                        "state": "unavailable",
+                        "payload": {"detail": type(error).__name__, "failed_safely": True},
+                    },
+                )
+                continue
+            usage = result.pop("usage")
+            cost = (
+                usage["input_tokens"] * self.settings.openai_input_usd_per_million
+                + usage["output_tokens"] * self.settings.openai_output_usd_per_million
+            ) / 1_000_000
+            used += cost
+            self.store.append_json(
+                "ai_usage",
+                {
+                    "model": self.settings.openai_model,
+                    "cost_usd": cost,
+                    "payload": {
+                        "cost_usd": cost,
+                        "input_tokens": usage["input_tokens"],
+                        "output_tokens": usage["output_tokens"],
+                        "purpose": "official_news_summary",
+                    },
+                },
+            )
+            updated = {**stored, "ai_summary": result}
+            self.store.update_news_event(event_fingerprint(event), updated)
+            summarised += 1
+
+        return {
+            "status": "ready" if not failed else "partial",
+            "summarised": summarised,
+            "failed": failed,
+            "spent_usd": round(used, 6),
+            "monthly_cap_usd": cap,
+        }
 
     def latest_news(self, limit: int = 100) -> list[dict[str, object]]:
         """Return news by actual publication time, not ingestion order."""
