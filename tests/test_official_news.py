@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -98,3 +99,61 @@ def test_one_unavailable_feed_does_not_discard_healthy_official_news() -> None:
 
     assert len(events) == 1
     assert failures == {"bad": "TimeoutError"}
+
+
+def test_bls_feed_falls_back_to_free_public_api() -> None:
+    feed = OfficialFeed(
+        name="bls_cpi",
+        url="https://www.bls.gov/feed/cpi.rss",
+        source="U.S. Bureau of Labor Statistics",
+        event_type="macro_inflation_cpi",
+        significance=92,
+        fallback_series_id="CUUR0000SA0",
+        fallback_label="BLS CPI all items",
+        fallback_unit="index points",
+        fallback_url="https://www.bls.gov/cpi/",
+    )
+
+    def unavailable_rss(_url: str, _headers: dict[str, str]) -> bytes:
+        raise PermissionError
+
+    def bls_api(_url: str, _headers: dict[str, str], body: bytes) -> bytes:
+        assert json.loads(body)["seriesid"] == ["CUUR0000SA0"]
+        return json.dumps(
+            {
+                "status": "REQUEST_SUCCEEDED",
+                "Results": {
+                    "series": [
+                        {
+                            "seriesID": "CUUR0000SA0",
+                            "data": [
+                                {
+                                    "year": "2026",
+                                    "period": "M06",
+                                    "periodName": "June",
+                                    "value": "333.952",
+                                },
+                                {
+                                    "year": "2026",
+                                    "period": "M05",
+                                    "periodName": "May",
+                                    "value": "335.123",
+                                },
+                            ],
+                        }
+                    ]
+                },
+            }
+        ).encode()
+
+    events, failures = OfficialRSSProvider(
+        (feed,),
+        unavailable_rss,
+        bls_api,
+    ).collect_events()
+
+    assert failures == {}
+    assert len(events) == 1
+    assert events[0].event_type == "macro_inflation_cpi"
+    assert "333.952 index points" in events[0].headline
+    assert "previous 335.123 index points" in events[0].headline
