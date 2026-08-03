@@ -140,6 +140,17 @@ if (
 ) {
   throw new Error("The daily LMIO interface must not expose raw technical data dumps.");
 }
+if (!navigation.includes('endpoint: "/api/v1/news/research-board"')) {
+  throw new Error("News research must use the complete official-source research board.");
+}
+for (const required of ["九类官方研究信息", "交易时应观察", "投资时应观察", "仍需核实"]) {
+  if (!humanReadablePanels.includes(required)) {
+    throw new Error(`Missing human-readable news research field: ${required}`);
+  }
+}
+if (humanReadablePanels.includes("查看原始来源")) {
+  throw new Error("News research must be understandable without a source-link handoff.");
+}
 for (const slug of expected) {
   if (
     !["unusual-options", "paper-trades"].includes(slug) &&

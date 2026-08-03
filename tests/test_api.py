@@ -372,6 +372,7 @@ def test_read_only_research_api_surface_is_available() -> None:
         "/api/v1/candidates",
         "/api/v1/research",
         "/api/v1/news",
+        "/api/v1/news/research-board",
         "/api/v1/ownership",
         "/api/v1/plans",
         "/api/v1/signals",

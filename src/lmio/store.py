@@ -9,7 +9,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 MIGRATION = """
 CREATE TABLE IF NOT EXISTS schema_versions (
     version INTEGER PRIMARY KEY,
@@ -143,6 +143,13 @@ CREATE TABLE IF NOT EXISTS system_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_type TEXT NOT NULL,
     severity TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS ai_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model TEXT NOT NULL,
+    cost_usd REAL NOT NULL,
     payload TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -501,6 +508,15 @@ class RuntimeStore:
                 """
             )
             connection.execute(
+                """
+                INSERT OR IGNORE INTO schema_versions(version)
+                SELECT 12
+                WHERE EXISTS (
+                    SELECT 1 FROM schema_versions WHERE version = 11
+                )
+                """
+            )
+            connection.execute(
                 "INSERT OR IGNORE INTO schema_versions(version) VALUES (?)",
                 (SCHEMA_VERSION,),
             )
@@ -586,6 +602,7 @@ class RuntimeStore:
             "reports",
             "signal_outcomes",
             "system_events",
+            "ai_usage",
             "research_packs",
             "conditional_plans",
             "provider_health",
@@ -661,6 +678,7 @@ class RuntimeStore:
             "reports",
             "signal_outcomes",
             "system_events",
+            "ai_usage",
             "research_packs",
             "conditional_plans",
             "provider_health",
@@ -749,6 +767,27 @@ class RuntimeStore:
                 (fingerprint, json.dumps(payload, sort_keys=True, default=str)),
             )
             return cursor.rowcount == 1
+
+    def update_news_event(self, fingerprint: str, payload: dict[str, Any]) -> bool:
+        with self.connection() as connection:
+            cursor = connection.execute(
+                "UPDATE news_events SET payload = ? WHERE fingerprint = ?",
+                (json.dumps(payload, sort_keys=True, default=str), fingerprint),
+            )
+            return cursor.rowcount == 1
+
+    def ai_usage_total(self, month_start: str, next_month_start: str) -> float:
+        with self.connection() as connection:
+            row = connection.execute(
+                """
+                SELECT COALESCE(SUM(cost_usd), 0) AS total
+                FROM ai_usage
+                WHERE datetime(created_at) >= datetime(?)
+                  AND datetime(created_at) < datetime(?)
+                """,
+                (month_start, next_month_start),
+            ).fetchone()
+        return float(row["total"])
 
     def put_ownership_event(
         self,

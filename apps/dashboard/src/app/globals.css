@@ -866,6 +866,22 @@ h1 {
   font-size: clamp(1.5rem, 3vw, 2.1rem);
 }
 
+.newsResearchSummary {
+  background: var(--paper);
+  border-left: 3px solid var(--accent);
+  margin-top: 24px;
+  padding: 18px 20px;
+}
+
+.newsResearchSummary p {
+  margin: 0;
+}
+
+.newsResearchSummary p + p {
+  color: var(--text);
+  margin-top: 8px;
+}
+
 .scoreBadge {
   color: var(--accent);
   font-size: 1.7rem;

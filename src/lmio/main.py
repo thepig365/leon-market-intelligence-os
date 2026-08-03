@@ -17,6 +17,7 @@ from lmio.health_console import build_system_health
 from lmio.news import news_impact_score
 from lmio.news_plan import propose_news_plan
 from lmio.news_price import ConfirmationState, NewsPriceConfirmation
+from lmio.news_research import build_news_research_board
 from lmio.plans import ConditionalPlan, PlanState, transition_with_evidence
 from lmio.roles import Principal
 from lmio.scheduler import run_scheduled_job, scheduler_status
@@ -729,6 +730,13 @@ def research_history(limit: int = 50) -> list[dict[str, Any]]:
 @app.get("/api/v1/news", tags=["research"])
 def news_history(limit: int = 100) -> list[dict[str, Any]]:
     return get_service().latest_news(limit)
+
+
+@app.get("/api/v1/news/research-board", tags=["research"])
+def news_research_board(limit: int = 100) -> dict[str, Any]:
+    """Return complete official-source coverage with evidence-bound research lenses."""
+
+    return build_news_research_board(get_service().latest_news(limit))
 
 
 @app.get("/api/v1/ownership", tags=["research"])

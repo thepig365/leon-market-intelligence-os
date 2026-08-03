@@ -72,29 +72,6 @@ function newsPriority(value: unknown) {
   return "持续观察";
 }
 
-function newsMeaning(value: unknown) {
-  const code = text(value, "other");
-  if (code === "macro_monetary_policy") return "可能影响利率预期、市场估值和整体风险偏好。";
-  if (code === "macro_employment") return "可能改变经济增长和美联储政策预期。";
-  if (code === "macro_inflation_cpi" || code === "macro_inflation_ppi") {
-    return "可能改变通胀与降息预期，并影响成长股估值。";
-  }
-  if (code === "macro_job_openings") return "反映劳动力需求，需结合就业和工资数据判断。";
-  if (code.startsWith("sec_4")) return "需要判断内部人是主动买入、出售还是例行安排。";
-  if (code.startsWith("sec_13")) return "需要比较前后持仓，确认机构或大股东是否明显增减持。";
-  if (code.startsWith("sec_8-k")) return "可能包含业绩、并购、融资、管理层或其他重大公司事项。";
-  if (code.startsWith("sec_10-k") || code.startsWith("sec_10-q")) {
-    return "需要核对收入、盈利、现金流、指引和风险披露的变化。";
-  }
-  return "先阅读原始来源，再判断是否会影响基本面或市场预期。";
-}
-
-function newsNextStep(value: unknown) {
-  const code = text(value, "other");
-  if (code.startsWith("macro_")) return "等待指数、利率、成交量和主要板块的市场反应确认。";
-  return "核对原始申报，并观察价格、成交量、VWAP 与开盘区间是否确认。";
-}
-
 function record(value: unknown): UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as UnknownRecord)
@@ -430,23 +407,47 @@ function StrategyScreenerPanel({ result }: { result: LMIOResult }) {
 
 function NewsPanel({ result }: { result: LMIOResult }) {
   if (result.state !== "ready") return <StatePanel result={result} title="新闻研究尚未取得资料" />;
-  const events = list(result.data).map(record);
-  if (!events.length) return <EmptyPanel message="尚无通过来源核验的重大新闻事件。" />;
+  const board = record(result.data);
+  const coverage = list(board.coverage).map(record);
+  const events = list(board.events).map(record);
   return (
     <>
       <section className="panel">
         <div className="panelHeader">
           <div>
             <p className="eyebrow">OFFICIAL SOURCES ONLY</p>
-            <h2>系统正在监控什么</h2>
+            <h2>九类官方研究信息</h2>
           </div>
           <span className="status status-ready">只读研究</span>
         </div>
         <p className="message">
-          美联储政策、CPI、PPI、就业、职位空缺，以及观察名单公司的 SEC 重大申报、
-          机构持仓和内部人士交易。新闻只会进入研究流程，不会触发自动交易。
+          免费官方来源包括美联储、美国劳工统计局和 SEC EDGAR。每条资料在页面内提供
+          简明研究摘要、交易观察和投资重点；不再要求跳转到原始来源才能理解事件。
         </p>
       </section>
+      <section className="compactCardGrid" aria-label="新闻来源覆盖状态">
+        {coverage.map((item) => {
+          const available = text(item.status, "waiting_for_verified_release") === "available";
+          return (
+            <article className="plainCard" key={text(item.code)}>
+              <div className="recordCardTop">
+                <div>
+                  <p className="eyebrow">{text(item.source)}</p>
+                  <h2>{text(item.label)}</h2>
+                </div>
+                <span className={`status status-${available ? "ready" : "empty"}`}>
+                  {available ? `${number(item.event_count)} 条` : "等待更新"}
+                </span>
+              </div>
+              <p>{text(item.description)}</p>
+              <p className="pageFootnote">
+                {available ? `最近发布：${date(item.latest_published_at)}` : "暂未取得已核验事件；不会以假资料填充。"}
+              </p>
+            </article>
+          );
+        })}
+      </section>
+      {!events.length ? <EmptyPanel message="九类来源已经启用，正在等待下一次官方更新。" /> : null}
       <section className="recordList">
       {events.map((event, index) => {
         const eventType = text(event.event_type, "other");
@@ -462,18 +463,22 @@ function NewsPanel({ result }: { result: LMIOResult }) {
             </div>
             <span className="scoreBadge">{newsPriority(event.significance)}<small>{number(event.significance)} 分</small></span>
           </div>
-          <p><strong>为什么重要：</strong>{newsMeaning(eventType)}</p>
-          <p><strong>下一步核实：</strong>{newsNextStep(eventType)}</p>
+          <div className="newsResearchSummary">
+            <p className="eyebrow">LMIO 研究摘要</p>
+            <p>{text(event.summary)}</p>
+          </div>
+          <dl className="factGrid">
+            <div><dt>交易时应观察</dt><dd>{text(event.trading_focus)}</dd></div>
+            <div><dt>投资时应观察</dt><dd>{text(event.investing_focus)}</dd></div>
+          </dl>
+          <p><strong>仍需核实：</strong>{text(event.missing_information)}</p>
           <dl className="factGrid">
             <div><dt>来源</dt><dd>{text(event.source)}</dd></div>
             <div><dt>来源质量</dt><dd>{number(event.source_tier) === "1" ? "一级官方来源" : `第 ${number(event.source_tier)} 级`}</dd></div>
             <div><dt>置信度</dt><dd>{percent(event.confidence)}</dd></div>
-            <div><dt>系统动作</dt><dd>研究与观察，不执行交易</dd></div>
+            <div><dt>系统动作</dt><dd>{text(event.system_action, "研究与观察，不执行交易")}</dd></div>
           </dl>
           <p className="pageFootnote">发布时间：{date(event.published_at)}</p>
-          {typeof event.source_url === "string" ? (
-            <a className="chartLink" href={event.source_url} rel="noreferrer" target="_blank">查看原始来源 ↗</a>
-          ) : null}
         </article>
         );
       })}
