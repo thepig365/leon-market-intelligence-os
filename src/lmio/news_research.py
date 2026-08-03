@@ -170,9 +170,7 @@ def build_news_research_board(events: list[dict[str, Any]]) -> dict[str, Any]:
         if isinstance(ai_summary, dict):
             lens = {
                 "summary": str(ai_summary.get("summary") or lens["summary"]),
-                "trading_focus": str(
-                    ai_summary.get("trading_focus") or lens["trading_focus"]
-                ),
+                "trading_focus": str(ai_summary.get("trading_focus") or lens["trading_focus"]),
                 "investing_focus": str(
                     ai_summary.get("investing_focus") or lens["investing_focus"]
                 ),

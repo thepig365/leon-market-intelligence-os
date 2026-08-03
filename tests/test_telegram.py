@@ -59,6 +59,7 @@ def test_private_webhook_ready_state_does_not_register_again() -> None:
     }
     assert len(calls) == 1
 
+
 VALID_TOKEN = "123456789:abcdefghijklmnopqrstuvwxyz_123456"
 VALID_CHAT_ID = "-1001234567890"
 

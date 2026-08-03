@@ -11,18 +11,13 @@ from lmio.providers.finviz_api import (
 )
 from lmio.service import LMIOService
 
-HEADER = (
-    "Ticker,Company,Sector,Industry,Country,Exchange,Market Cap,Average Volume,"
-    "Price,Change\n"
-)
+HEADER = "Ticker,Company,Sector,Industry,Country,Exchange,Market Cap,Average Volume,Price,Change\n"
 
 
 def _market_csv() -> bytes:
     rows = [
-        "SPY,SPDR S&P 500 ETF,Financial,Exchange Traded Fund,USA,AMEX,500000,80000,"
-        "650,0.80%",
-        "QQQ,Invesco QQQ ETF,Technology,Exchange Traded Fund,USA,NASD,350000,60000,"
-        "600,1.00%",
+        "SPY,SPDR S&P 500 ETF,Financial,Exchange Traded Fund,USA,AMEX,500000,80000,650,0.80%",
+        "QQQ,Invesco QQQ ETF,Technology,Exchange Traded Fund,USA,NASD,350000,60000,600,1.00%",
         "IWM,iShares Russell 2000 ETF,Financial,Exchange Traded Fund,USA,AMEX,70000,40000,"
         "500,0.60%",
     ]
@@ -49,8 +44,7 @@ def _provider() -> FinvizAPIProvider:
         transport=lambda *_args: _response(FINVIZ_EXPORT_URL, _market_csv()),
         vix_transport=lambda *_args: _response(
             VIX_HISTORY_URL,
-            b"DATE,OPEN,HIGH,LOW,CLOSE\n07/30/2026,18,19,17,17.09\n"
-            b"07/31/2026,16,18,15,15.99\n",
+            b"DATE,OPEN,HIGH,LOW,CLOSE\n07/30/2026,18,19,17,17.09\n07/31/2026,16,18,15,15.99\n",
         ),
     )
 
@@ -88,6 +82,5 @@ def test_finviz_refresh_persists_verified_market_regime(tmp_path: Path) -> None:
     assert regimes[0]["payload"]["environment"]["breadth_observations"] == 100
     health = service.store.history_json("provider_health")
     assert any(
-        item["provider"] == "market_environment" and item["state"] == "ready"
-        for item in health
+        item["provider"] == "market_environment" and item["state"] == "ready" for item in health
     )

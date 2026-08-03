@@ -411,8 +411,7 @@ class SupabaseRuntimeStore:
             },
         )
         return sum(
-            float((item.get("payload") or {}).get("cost_usd", 0))
-            for item in response.json()
+            float((item.get("payload") or {}).get("cost_usd", 0)) for item in response.json()
         )
 
     def put_ownership_event(

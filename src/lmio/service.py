@@ -213,9 +213,7 @@ class LMIOService:
             )
             return StageResult(
                 status=(
-                    StageStatus.SUCCEEDED
-                    if regime.label != "Unverified"
-                    else StageStatus.PARTIAL
+                    StageStatus.SUCCEEDED if regime.label != "Unverified" else StageStatus.PARTIAL
                 ),
                 output_count=len(snapshots),
                 warning_count=int(regime.label == "Unverified"),
@@ -554,9 +552,7 @@ class LMIOService:
                 top,
                 universe_checked=len(snapshots),
                 investable=len(list(context.get("investable") or [])),
-                regime=MarketRegime.model_validate(
-                    context.get("regime") or unverified_regime()
-                ),
+                regime=MarketRegime.model_validate(context.get("regime") or unverified_regime()),
                 data_mode=provider.name,
                 valuations=valuations,
                 research_packs=packs,

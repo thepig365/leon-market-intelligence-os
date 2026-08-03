@@ -22,9 +22,7 @@ def test_news_board_always_exposes_all_required_categories() -> None:
 
     assert len(NEWS_RESEARCH_CATEGORIES) == 9
     assert len(board["coverage"]) == 9
-    assert {item["status"] for item in board["coverage"]} == {
-        "waiting_for_verified_release"
-    }
+    assert {item["status"] for item in board["coverage"]} == {"waiting_for_verified_release"}
     assert board["events"] == []
 
 
