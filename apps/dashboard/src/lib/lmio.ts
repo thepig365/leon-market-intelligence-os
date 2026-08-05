@@ -133,7 +133,12 @@ export async function refreshLMIO(identity: {
         "x-lmio-actor-id": identity.id,
         "x-lmio-actor-role": identity.role,
       },
-      signal: AbortSignal.timeout(240_000),
+      // The verified production refresh currently completes in about four
+      // minutes. Keep the browser-facing server action below Vercel's
+      // five-minute ceiling while allowing the bounded runtime coordinator to
+      // return its complete/partial result instead of reporting a false
+      // timeout just before completion.
+      signal: AbortSignal.timeout(290_000),
     });
     if (!response.ok) {
       console.error("LMIO full refresh returned a non-success status", response.status);

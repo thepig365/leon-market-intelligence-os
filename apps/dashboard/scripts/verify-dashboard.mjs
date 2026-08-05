@@ -110,8 +110,11 @@ for (const required of ["requireIdentity", "owner", "operator", "refreshLMIO", "
     throw new Error(`Full refresh must retain its server-side identity boundary: ${required}`);
   }
 }
-if (!runtime.includes("/api/v1/operator/full-refresh") || !runtime.includes("240_000")) {
+if (!runtime.includes("/api/v1/operator/full-refresh") || !runtime.includes("290_000")) {
   throw new Error("Full refresh must use the bounded server-to-server runtime endpoint.");
+}
+if (!layout.includes("export const maxDuration = 300")) {
+  throw new Error("Full refresh Server Actions must retain the five-minute route ceiling.");
 }
 for (const required of [
   "/api/v1/acceptance",

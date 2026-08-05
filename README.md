@@ -153,7 +153,9 @@ macro and SEC news refresh, AI news summaries, due-outcome processing, strategy
 performance aggregation and system-health update. Unavailable components are
 reported as partial while successful current evidence remains usable. It does
 not create an order, make a payment, change configuration or expose credentials
-to the browser.
+to the browser. The dashboard allows up to five minutes for this bounded,
+read-only refresh so the runtime can return an accurate complete or partial
+result instead of a false timeout near the end of a verified production run.
 
 LMIO never reports an integration as working merely because its configuration
 exists. A successful read-only verification is required.
