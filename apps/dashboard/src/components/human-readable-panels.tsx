@@ -167,7 +167,6 @@ function CommandCentrePanel({ result }: { result: LMIOResult }) {
   const riskBlocks = list(command.risk_blocks).map((item) => text(item));
   const warnings = list(command.warnings).map((item) => text(item));
   const providers = record(command.provider_health);
-  const latestProvider = record(command.latest_provider);
   const telegram = record(command.telegram);
   const safety = record(command.safety);
   const finviz = record(
@@ -225,8 +224,8 @@ function CommandCentrePanel({ result }: { result: LMIOResult }) {
           </div>
           <h2>{finvizReady ? "市场扫描已连接" : "当前状态未确认"}</h2>
           <p>
-            最近核验：{date(latestProvider.created_at)}。来源：
-            {text(latestProvider.provider, "尚无核验记录")}。
+            最近核验：{date(finviz.checked_at)}。来源：
+            {text(finviz.provider, "尚无核验记录")}。
           </p>
         </article>
 

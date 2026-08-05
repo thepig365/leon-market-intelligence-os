@@ -102,6 +102,9 @@ for (const forbidden of ["LMIO_READ_KEY", "SUPABASE_SERVICE_ROLE_KEY", "FINVIZ_A
 if (!appShell.includes("不执行交易")) {
   throw new Error("Dashboard must display the no-trading boundary.");
 }
+if (!humanReadablePanels.includes("date(finviz.checked_at)") || !humanReadablePanels.includes("text(finviz.provider")) {
+  throw new Error("Finviz status must use Finviz-specific health evidence.");
+}
 if (!appShell.includes("RefreshControl") || !refreshControl.includes("刷新全部资料")) {
   throw new Error("Authenticated pages must expose the full research refresh control.");
 }

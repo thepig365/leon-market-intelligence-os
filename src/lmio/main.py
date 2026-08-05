@@ -601,12 +601,20 @@ def providers_health() -> dict[str, Any]:
         }
         for name, configured in readiness.items()
     }
-    latest_provider = get_service().store.latest_provider_health()
-    if latest_provider is not None:
-        providers[latest_provider["provider"]] = {
-            "state": latest_provider["state"],
-            "detail": latest_provider["payload"].get("detail"),
-            "checked_at": latest_provider["created_at"],
+    # Provider cards must use the latest result for that provider, not the
+    # latest result across every provider. A news refresh commonly writes SEC
+    # or macro health after Finviz and must not overwrite the Finviz card.
+    for item in get_service().store.history_json("provider_health", 1000):
+        provider = str(item.get("provider", "")).strip()
+        if not provider or (
+            provider in providers and "checked_at" in providers[provider]
+        ):
+            continue
+        providers[provider] = {
+            "provider": provider,
+            "state": item.get("state", "unavailable"),
+            "detail": dict(item.get("payload") or {}).get("detail"),
+            "checked_at": item.get("created_at"),
         }
     return providers
 

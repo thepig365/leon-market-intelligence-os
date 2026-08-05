@@ -144,6 +144,14 @@ def test_command_centre_combines_operating_status_without_secrets(
         },
     )
     service.store.append_json(
+        "provider_health",
+        {
+            "provider": "sec_edgar",
+            "state": "ready",
+            "payload": {"detail": "Official SEC refresh completed."},
+        },
+    )
+    service.store.append_json(
         "reports",
         {
             "report_type": "daily",
@@ -183,6 +191,9 @@ def test_command_centre_combines_operating_status_without_secrets(
     payload = response.json()
     assert payload["research_queue"][0]["symbol"] == "SNDK"
     assert payload["provider_health"]["finviz_elite_api"]["state"] == "ready"
+    assert payload["provider_health"]["finviz_elite_api"]["provider"] == "finviz_elite_api"
+    assert payload["provider_health"]["sec_edgar"]["state"] == "ready"
+    assert payload["latest_provider"]["provider"] == "sec_edgar"
     assert payload["telegram"]["private_queries_configured"] is True
     assert payload["safety"] == {
         "can_trade": False,
