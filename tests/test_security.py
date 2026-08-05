@@ -8,6 +8,7 @@ from lmio.main import app
 from lmio.security import (
     require_admin,
     require_cron,
+    require_dashboard_refresh,
     require_telegram_webhook,
     valid_cron_credential,
     valid_read_credential,
@@ -119,7 +120,7 @@ def test_controlled_test_environment_allows_read_bypass(
 
 def test_every_mutating_route_is_admin_protected() -> None:
     mutating_methods = {"POST", "PUT", "PATCH", "DELETE"}
-    accepted_guards = {require_admin, require_telegram_webhook}
+    accepted_guards = {require_admin, require_dashboard_refresh, require_telegram_webhook}
 
     for route in app.routes:
         if not isinstance(route, APIRoute) or not route.methods.intersection(mutating_methods):

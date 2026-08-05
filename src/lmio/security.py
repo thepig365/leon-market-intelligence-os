@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import Header, HTTPException
 
 from lmio.config import get_settings
-from lmio.roles import Principal, Role
+from lmio.roles import Principal, Role, can
 from lmio.telegram import valid_webhook_secret
 
 
@@ -26,6 +26,33 @@ def require_admin(
         role=Role.OWNER,
         authentication_method="admin_api_key",
     )
+
+
+def require_dashboard_refresh(
+    x_lmio_read_key: Annotated[str | None, Header()] = None,
+    x_lmio_actor_id: Annotated[str | None, Header()] = None,
+    x_lmio_actor_role: Annotated[str | None, Header()] = None,
+) -> Principal:
+    """Authorise the one bounded refresh capability used by the private dashboard.
+
+    The dashboard performs the Google/Supabase identity check before making this
+    server-to-server call.  The runtime still validates the private service
+    credential and rejects reviewer or anonymous requests.  This capability can
+    refresh research evidence only; it cannot create orders or change settings.
+    """
+
+    if not valid_read_credential(x_lmio_read_key):
+        raise HTTPException(status_code=401, detail="Invalid LMIO refresh credential.")
+    if not x_lmio_actor_id or x_lmio_actor_role not in {Role.OWNER, Role.OPERATOR}:
+        raise HTTPException(status_code=403, detail="Refresh requires an owner or operator.")
+    principal = Principal(
+        actor_id=x_lmio_actor_id[:160],
+        role=Role(x_lmio_actor_role),
+        authentication_method="google_session_plus_server_credential",
+    )
+    if not can(principal, "request_refresh"):
+        raise HTTPException(status_code=403, detail="This identity cannot request refreshes.")
+    return principal
 
 
 def valid_read_credential(value: str | None) -> bool:

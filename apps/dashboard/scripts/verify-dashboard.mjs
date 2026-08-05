@@ -44,6 +44,14 @@ const acceptanceActions = await readFile(
   new URL("../src/app/acceptance/actions.ts", import.meta.url),
   "utf8",
 );
+const refreshActions = await readFile(
+  new URL("../src/app/refresh/actions.ts", import.meta.url),
+  "utf8",
+);
+const refreshControl = await readFile(
+  new URL("../src/components/refresh-control.tsx", import.meta.url),
+  "utf8",
+);
 
 const expected = [
   "command-centre",
@@ -93,6 +101,17 @@ for (const forbidden of ["LMIO_READ_KEY", "SUPABASE_SERVICE_ROLE_KEY", "FINVIZ_A
 }
 if (!appShell.includes("不执行交易")) {
   throw new Error("Dashboard must display the no-trading boundary.");
+}
+if (!appShell.includes("RefreshControl") || !refreshControl.includes("刷新全部资料")) {
+  throw new Error("Authenticated pages must expose the full research refresh control.");
+}
+for (const required of ["requireIdentity", "owner", "operator", "refreshLMIO", "revalidatePath"]) {
+  if (!refreshActions.includes(required)) {
+    throw new Error(`Full refresh must retain its server-side identity boundary: ${required}`);
+  }
+}
+if (!runtime.includes("/api/v1/operator/full-refresh") || !runtime.includes("240_000")) {
+  throw new Error("Full refresh must use the bounded server-to-server runtime endpoint.");
 }
 for (const required of [
   "/api/v1/acceptance",

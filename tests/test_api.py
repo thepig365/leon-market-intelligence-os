@@ -209,6 +209,80 @@ def test_mutating_api_is_closed_without_admin_key() -> None:
     assert news_analysis.status_code == 503
 
 
+def test_full_refresh_is_bounded_to_authenticated_dashboard_operator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "runtime.sqlite3",
+        environment="production",
+        read_api_key="dashboard-service-secret",
+    )
+    service = LMIOService(settings)
+    calls = 0
+
+    def full_pipeline() -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return {
+            "status": "partial",
+            "run_id": "lmio-refresh-test",
+            "started_at": "2026-08-06T01:00:00Z",
+            "finished_at": "2026-08-06T01:00:05Z",
+            "duration_ms": 5000,
+            "stage_counts": {"succeeded": 19, "partial": 1, "failed": 1},
+            "stages": [
+                {"stage_name": "finviz_market_snapshot", "status": "succeeded"},
+                {"stage_name": "official_macro_news_refresh", "status": "partial"},
+                {"stage_name": "valuation_input_preparation", "status": "failed"},
+            ],
+        }
+
+    monkeypatch.setattr(service, "run_operational_pipeline", full_pipeline)
+    monkeypatch.setattr("lmio.security.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.main.get_service", lambda: service)
+
+    missing_identity = request(
+        "POST",
+        "/api/v1/operator/full-refresh",
+        headers={"x-lmio-read-key": "dashboard-service-secret"},
+    )
+    assert missing_identity.status_code == 403
+    assert calls == 0
+
+    reviewer = request(
+        "POST",
+        "/api/v1/operator/full-refresh",
+        headers={
+            "x-lmio-read-key": "dashboard-service-secret",
+            "x-lmio-actor-id": "reviewer-1",
+            "x-lmio-actor-role": "reviewer",
+        },
+    )
+    assert reviewer.status_code == 403
+    assert calls == 0
+
+    response = request(
+        "POST",
+        "/api/v1/operator/full-refresh",
+        headers={
+            "x-lmio-read-key": "dashboard-service-secret",
+            "x-lmio-actor-id": "owner-1",
+            "x-lmio-actor-role": "owner",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "partial"
+    assert response.json()["trading_action"] is False
+    assert response.json()["payment_action"] is False
+    assert response.json()["failed_or_blocked_stages"] == [
+        "valuation_input_preparation"
+    ]
+    assert response.json()["partial_stages"] == ["official_macro_news_refresh"]
+    assert calls == 1
+
+
 def test_synthetic_replay_is_disabled_even_for_admin_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

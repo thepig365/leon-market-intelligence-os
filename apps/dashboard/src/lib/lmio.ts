@@ -118,3 +118,38 @@ export async function mutateLMIO(
     };
   }
 }
+
+export async function refreshLMIO(identity: {
+  id: string;
+  role: "owner" | "operator";
+}): Promise<LMIOResult> {
+  const checkedAt = new Date().toISOString();
+  try {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/operator/full-refresh`, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        ...(await runtimeHeaders()),
+        "x-lmio-actor-id": identity.id,
+        "x-lmio-actor-role": identity.role,
+      },
+      signal: AbortSignal.timeout(240_000),
+    });
+    if (!response.ok) {
+      console.error("LMIO full refresh returned a non-success status", response.status);
+      return {
+        state: "unavailable",
+        message: `资料刷新未完成（${response.status}）；旧资料保持不变。`,
+        checkedAt,
+      };
+    }
+    return { state: "ready", data: await response.json(), checkedAt };
+  } catch (error) {
+    logRuntimeFailure("LMIO full refresh failed", error);
+    return {
+      state: "unavailable",
+      message: "资料刷新服务暂时不可用；旧资料保持不变。",
+      checkedAt,
+    };
+  }
+}

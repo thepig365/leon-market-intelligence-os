@@ -24,6 +24,7 @@ from lmio.scheduler import run_scheduled_job, scheduler_status
 from lmio.security import (
     require_admin,
     require_cron,
+    require_dashboard_refresh,
     require_telegram_webhook,
     valid_cron_credential,
     valid_read_credential,
@@ -414,6 +415,60 @@ class AcceptanceControlInput(BaseModel):
     action: str = Field(
         pattern="^(smoke_test|provider_refresh|manual_pipeline|telegram_drain|health_refresh|scheduler_inspect|backup_status)$"
     )
+
+
+@app.post("/api/v1/operator/full-refresh", tags=["system"])
+def operator_full_refresh(
+    principal: Annotated[Principal, Depends(require_dashboard_refresh)],
+) -> dict[str, object]:
+    """Refresh every connected research source through the canonical pipeline.
+
+    This endpoint is intentionally narrow: it has no arbitrary action input and
+    no trading, payment, configuration, or account-management capability.
+    """
+
+    service = get_service()
+    result = service.run_operational_pipeline()
+    stages = list(result.get("stages") or [])
+    failed = [
+        str(stage.get("stage_name", "unknown"))
+        for stage in stages
+        if str(stage.get("status")) in {"failed", "blocked"}
+    ]
+    partial = [
+        str(stage.get("stage_name", "unknown"))
+        for stage in stages
+        if str(stage.get("status")) == "partial"
+    ]
+    service.store.append_json(
+        "system_events",
+        {
+            "event_type": "operator_full_refresh",
+            "severity": str(result.get("status", "failed")),
+            "payload": {
+                "actor": principal.actor_id,
+                "role": principal.role,
+                "run_id": result.get("run_id"),
+                "completed_at": result.get("finished_at"),
+                "failed_or_blocked_stages": failed,
+                "partial_stages": partial,
+                "trading_action": False,
+                "payment_action": False,
+            },
+        },
+    )
+    return {
+        "status": result.get("status"),
+        "run_id": result.get("run_id"),
+        "started_at": result.get("started_at"),
+        "finished_at": result.get("finished_at"),
+        "duration_ms": result.get("duration_ms"),
+        "stage_counts": result.get("stage_counts"),
+        "failed_or_blocked_stages": failed,
+        "partial_stages": partial,
+        "trading_action": False,
+        "payment_action": False,
+    }
 
 
 @app.post("/api/v1/acceptance/control", tags=["system"])

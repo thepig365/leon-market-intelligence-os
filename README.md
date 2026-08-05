@@ -127,8 +127,11 @@ Then open `http://127.0.0.1:3000`. The dashboard performs authenticated,
 server-side, read-only requests to FastAPI and never receives provider,
 service-role, runtime-read or administrator credentials.
 
-HTTP mutations require `LMIO_ADMIN_API_KEY` and the `X-LMIO-Key` request
-header. The trusted local CLI does not expose a remote mutation surface.
+General HTTP mutations require `LMIO_ADMIN_API_KEY` and the `X-LMIO-Key`
+request header. The dashboard's bounded refresh action instead reuses the
+private server-to-server credential after verifying the Google/Supabase role;
+the browser never receives that credential. The trusted local CLI does not
+expose a remote mutation surface.
 
 ## Optional integrations
 
@@ -143,6 +146,12 @@ header. The trusted local CLI does not expose a remote mutation surface.
 - `LMIO_READ_API_KEY`: protects runtime reads outside the minimal health probe;
 - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: enable the isolated
   production store when `LMIO_STORE_BACKEND=supabase`.
+
+The protected dashboard also exposes **刷新全部资料** to active owner/operator
+accounts. It runs the same 21-stage, non-trading research pipeline used by the
+scheduler and reports succeeded, partial or failed truthfully. It does not
+create an order, make a payment, change configuration or expose credentials to
+the browser.
 
 LMIO never reports an integration as working merely because its configuration
 exists. A successful read-only verification is required.
