@@ -148,10 +148,12 @@ expose a remote mutation surface.
   production store when `LMIO_STORE_BACKEND=supabase`.
 
 The protected dashboard also exposes **刷新全部资料** to active owner/operator
-accounts. It runs the same 21-stage, non-trading research pipeline used by the
-scheduler and reports succeeded, partial or failed truthfully. It does not
-create an order, make a payment, change configuration or expose credentials to
-the browser.
+accounts. It coordinates the bounded Finviz market/report refresh, official
+macro and SEC news refresh, AI news summaries, due-outcome processing, strategy
+performance aggregation and system-health update. Unavailable components are
+reported as partial while successful current evidence remains usable. It does
+not create an order, make a payment, change configuration or expose credentials
+to the browser.
 
 LMIO never reports an integration as working merely because its configuration
 exists. A successful read-only verification is required.

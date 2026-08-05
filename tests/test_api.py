@@ -220,26 +220,32 @@ def test_full_refresh_is_bounded_to_authenticated_dashboard_operator(
         read_api_key="dashboard-service-secret",
     )
     service = LMIOService(settings)
-    calls = 0
+    calls: list[str] = []
 
-    def full_pipeline() -> dict[str, object]:
-        nonlocal calls
-        calls += 1
+    def finviz_refresh() -> dict[str, object]:
+        calls.append("finviz")
+        return {"status": "completed"}
+
+    def news_refresh() -> dict[str, object]:
+        calls.append("news")
         return {
-            "status": "partial",
-            "run_id": "lmio-refresh-test",
-            "started_at": "2026-08-06T01:00:00Z",
-            "finished_at": "2026-08-06T01:00:05Z",
-            "duration_ms": 5000,
-            "stage_counts": {"succeeded": 19, "partial": 1, "failed": 1},
-            "stages": [
-                {"stage_name": "finviz_market_snapshot", "status": "succeeded"},
-                {"stage_name": "official_macro_news_refresh", "status": "partial"},
-                {"stage_name": "valuation_input_preparation", "status": "failed"},
-            ],
+            "macro": {"status": "completed"},
+            "sec": {"status": "partial"},
         }
 
-    monkeypatch.setattr(service, "run_operational_pipeline", full_pipeline)
+    def outcomes_refresh() -> dict[str, object]:
+        calls.append("outcomes")
+        return {"status": "completed"}
+
+    def performance_refresh() -> dict[str, object]:
+        calls.append("performance")
+        return {"status": "completed"}
+
+    monkeypatch.setattr(service, "refresh_finviz", finviz_refresh)
+    monkeypatch.setattr(service, "refresh_official_news", news_refresh)
+    monkeypatch.setattr(service, "process_due_outcomes", outcomes_refresh)
+    monkeypatch.setattr(service, "aggregate_strategy_performance", performance_refresh)
+    monkeypatch.setattr("lmio.main.build_system_health", lambda *_: {"status": "ok"})
     monkeypatch.setattr("lmio.security.get_settings", lambda: settings)
     monkeypatch.setattr("lmio.main.get_service", lambda: service)
 
@@ -249,7 +255,7 @@ def test_full_refresh_is_bounded_to_authenticated_dashboard_operator(
         headers={"x-lmio-read-key": "dashboard-service-secret"},
     )
     assert missing_identity.status_code == 403
-    assert calls == 0
+    assert calls == []
 
     reviewer = request(
         "POST",
@@ -261,7 +267,7 @@ def test_full_refresh_is_bounded_to_authenticated_dashboard_operator(
         },
     )
     assert reviewer.status_code == 403
-    assert calls == 0
+    assert calls == []
 
     response = request(
         "POST",
@@ -276,11 +282,11 @@ def test_full_refresh_is_bounded_to_authenticated_dashboard_operator(
     assert response.json()["status"] == "partial"
     assert response.json()["trading_action"] is False
     assert response.json()["payment_action"] is False
-    assert response.json()["failed_or_blocked_stages"] == [
-        "valuation_input_preparation"
+    assert response.json()["unavailable_components"] == []
+    assert response.json()["partial_components"] == [
+        "official_macro_sec_and_ai_news"
     ]
-    assert response.json()["partial_stages"] == ["official_macro_news_refresh"]
-    assert calls == 1
+    assert calls == ["finviz", "news", "outcomes", "performance"]
 
 
 def test_synthetic_replay_is_disabled_even_for_admin_by_default(

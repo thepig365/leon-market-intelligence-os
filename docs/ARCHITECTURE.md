@@ -74,8 +74,10 @@ remain explicit rather than receiving a guessed CIK.
 - General mutating HTTP routes require an administrator API key. The sole
   exception is the fixed full-research refresh endpoint: it accepts no action
   parameters, requires an owner/operator Google session at the dashboard plus
-  the server-only runtime credential, and has no trading, payment, settings or
-  account-management capability.
+  the server-only runtime credential, coordinates bounded provider and derived
+  evidence refreshes without placing the 21-stage scheduled pipeline inside one
+  browser request, and has no trading, payment, settings or account-management
+  capability.
 - No broker/order package exists.
 - All trading and paper-trading flags are validated false at startup.
 

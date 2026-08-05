@@ -421,51 +421,118 @@ class AcceptanceControlInput(BaseModel):
 def operator_full_refresh(
     principal: Annotated[Principal, Depends(require_dashboard_refresh)],
 ) -> dict[str, object]:
-    """Refresh every connected research source through the canonical pipeline.
+    """Refresh every connected research source without one long pipeline request.
 
     This endpoint is intentionally narrow: it has no arbitrary action input and
     no trading, payment, configuration, or account-management capability.
     """
 
     service = get_service()
-    result = service.run_operational_pipeline()
-    stages = list(result.get("stages") or [])
-    failed = [
-        str(stage.get("stage_name", "unknown"))
-        for stage in stages
-        if str(stage.get("status")) in {"failed", "blocked"}
-    ]
+    started_at = datetime.now(UTC)
+    run_id = f"operator-refresh-{started_at:%Y%m%dT%H%M%S}"
+    component_statuses: dict[str, str] = {}
+    unavailable: list[str] = []
+
+    refreshes = (
+        ("finviz_market_strategy_and_report", service.refresh_finviz),
+        ("official_macro_sec_and_ai_news", service.refresh_official_news),
+        ("due_outcomes", service.process_due_outcomes),
+        ("strategy_performance", service.aggregate_strategy_performance),
+    )
+    for component, refresh in refreshes:
+        try:
+            result = refresh()
+        except Exception as error:
+            component_statuses[component] = "unavailable"
+            unavailable.append(component)
+            service.store.append_json(
+                "system_events",
+                {
+                    "event_type": "operator_refresh_component_unavailable",
+                    "severity": "warning",
+                    "payload": {
+                        "run_id": run_id,
+                        "component": component,
+                        "error_class": type(error).__name__,
+                        "trading_action": False,
+                        "payment_action": False,
+                    },
+                },
+            )
+            continue
+
+        raw_status = str(result.get("status", "completed"))
+        nested_statuses = {
+            str(value.get("status"))
+            for value in result.values()
+            if isinstance(value, dict) and value.get("status") is not None
+        }
+        if raw_status in {"failed", "unavailable"} or nested_statuses.intersection(
+            {"failed", "unavailable"}
+        ):
+            component_statuses[component] = "unavailable"
+            unavailable.append(component)
+        elif raw_status in {"partial", "degraded"} or nested_statuses.intersection(
+            {"partial", "degraded", "disabled"}
+        ):
+            component_statuses[component] = "partial"
+        else:
+            component_statuses[component] = "completed"
+
+    try:
+        build_system_health(service.store, service.settings)
+    except Exception as error:
+        component_statuses["system_health"] = "unavailable"
+        unavailable.append("system_health")
+        service.store.append_json(
+            "system_events",
+            {
+                "event_type": "operator_refresh_component_unavailable",
+                "severity": "warning",
+                "payload": {
+                    "run_id": run_id,
+                    "component": "system_health",
+                    "error_class": type(error).__name__,
+                    "trading_action": False,
+                    "payment_action": False,
+                },
+            },
+        )
+    else:
+        component_statuses["system_health"] = "completed"
+
+    finished_at = datetime.now(UTC)
     partial = [
-        str(stage.get("stage_name", "unknown"))
-        for stage in stages
-        if str(stage.get("status")) == "partial"
+        name for name, status in component_statuses.items() if status == "partial"
     ]
+    status = "partial" if unavailable or partial else "succeeded"
     service.store.append_json(
         "system_events",
         {
             "event_type": "operator_full_refresh",
-            "severity": str(result.get("status", "failed")),
+            "severity": status,
             "payload": {
                 "actor": principal.actor_id,
                 "role": principal.role,
-                "run_id": result.get("run_id"),
-                "completed_at": result.get("finished_at"),
-                "failed_or_blocked_stages": failed,
-                "partial_stages": partial,
+                "run_id": run_id,
+                "completed_at": finished_at.isoformat(),
+                "component_statuses": component_statuses,
+                "unavailable_components": unavailable,
+                "partial_components": partial,
                 "trading_action": False,
                 "payment_action": False,
             },
         },
     )
     return {
-        "status": result.get("status"),
-        "run_id": result.get("run_id"),
-        "started_at": result.get("started_at"),
-        "finished_at": result.get("finished_at"),
-        "duration_ms": result.get("duration_ms"),
-        "stage_counts": result.get("stage_counts"),
-        "failed_or_blocked_stages": failed,
-        "partial_stages": partial,
+        "status": status,
+        "run_id": run_id,
+        "started_at": started_at.isoformat(),
+        "finished_at": finished_at.isoformat(),
+        "duration_ms": int((finished_at - started_at).total_seconds() * 1000),
+        "component_statuses": component_statuses,
+        "unavailable_components": unavailable,
+        "partial_components": partial,
         "trading_action": False,
         "payment_action": False,
     }
