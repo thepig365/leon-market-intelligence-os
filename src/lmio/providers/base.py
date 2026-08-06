@@ -9,6 +9,7 @@ class ProviderState(StrEnum):
     """Bounded provider readiness states."""
 
     DISABLED = "disabled"
+    CONFIGURED_NOT_VERIFIED = "configured_not_verified"
     READY = "ready"
     DEGRADED = "degraded"
     UNAVAILABLE = "unavailable"

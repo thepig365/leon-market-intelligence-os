@@ -19,10 +19,15 @@ class Settings(BaseSettings):
         populate_by_name=True,
     )
 
-    environment: Literal["local", "test", "staging", "production"] = Field(
+    environment: Literal["local", "test", "preview", "production"] = Field(
         default="local",
         validation_alias=AliasChoices("LMIO_ENVIRONMENT", "ENVIRONMENT"),
     )
+    allow_insecure_local_reads: bool = Field(
+        default=False,
+        validation_alias="LMIO_ALLOW_INSECURE_LOCAL_READS",
+    )
+    enable_demo_mode: bool = Field(default=False, validation_alias="LMIO_ENABLE_DEMO_MODE")
     default_language: Literal["zh-CN"] = Field(
         default="zh-CN",
         validation_alias=AliasChoices("LMIO_DEFAULT_LANGUAGE", "DEFAULT_LANGUAGE"),
@@ -44,14 +49,66 @@ class Settings(BaseSettings):
         default=Path("var/lmio.sqlite3"),
         validation_alias="LMIO_DATABASE_PATH",
     )
+    store_backend: Literal["sqlite", "supabase"] = Field(
+        default="sqlite",
+        validation_alias="LMIO_STORE_BACKEND",
+    )
+    supabase_url: str = Field(default="", validation_alias="SUPABASE_URL")
+    supabase_service_role_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="SUPABASE_SERVICE_ROLE_KEY",
+    )
+    read_api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="LMIO_READ_API_KEY",
+    )
     sec_user_agent: str = Field(default="", validation_alias="SEC_USER_AGENT")
     sec_watchlist: str = Field(
         default="AAPL:320193,META:1326801",
         validation_alias="LMIO_SEC_WATCHLIST",
     )
-    telegram_bot_token: str = Field(default="", validation_alias="TELEGRAM_BOT_TOKEN")
-    telegram_chat_id: str = Field(default="", validation_alias="TELEGRAM_CHAT_ID")
+    telegram_bot_token: SecretStr = Field(
+        default=SecretStr(""), validation_alias="TELEGRAM_BOT_TOKEN"
+    )
+    telegram_chat_id: SecretStr = Field(default=SecretStr(""), validation_alias="TELEGRAM_CHAT_ID")
+    telegram_webhook_secret: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="TELEGRAM_WEBHOOK_SECRET",
+    )
+    public_base_url: str = Field(default="", validation_alias="LMIO_PUBLIC_BASE_URL")
+    finviz_api_token: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="FINVIZ_API_TOKEN",
+    )
+    cron_secret: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="CRON_SECRET",
+    )
+    openai_api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="OPENAI_API_KEY",
+    )
+    openai_model: str = Field(default="gpt-5.6-luna", validation_alias="LMIO_OPENAI_MODEL")
+    openai_monthly_cap_usd: float = Field(
+        default=5.0, ge=0, le=5.0, validation_alias="LMIO_OPENAI_MONTHLY_CAP_USD"
+    )
+    openai_input_usd_per_million: float = Field(
+        default=1.0, ge=0, validation_alias="LMIO_OPENAI_INPUT_USD_PER_MILLION"
+    )
+    openai_output_usd_per_million: float = Field(
+        default=6.0, ge=0, validation_alias="LMIO_OPENAI_OUTPUT_USD_PER_MILLION"
+    )
     admin_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="LMIO_ADMIN_API_KEY")
+    ibkr_bridge_key: SecretStr = Field(
+        default=SecretStr(""), validation_alias="LMIO_IBKR_BRIDGE_KEY"
+    )
+    owner_identity: str = Field(default="leon", validation_alias="LMIO_OWNER_IDENTITY")
+    release_sha: str = Field(default="unrecorded", validation_alias="LMIO_RELEASE_SHA")
+    vercel_git_commit_sha: str = Field(default="", validation_alias="VERCEL_GIT_COMMIT_SHA")
+    release_label: str = Field(
+        default="LMIO v1.0 RC1 — Ready for Operator Acceptance",
+        validation_alias="LMIO_RELEASE_LABEL",
+    )
 
     @model_validator(mode="after")
     def reject_trading_activation(self) -> Self:
@@ -67,6 +124,15 @@ class Settings(BaseSettings):
         if enabled:
             joined = ", ".join(enabled)
             raise ValueError(f"LMIO V1 trading safety boundary violated: {joined} must be false")
+        if self.store_backend == "supabase":
+            if not self.supabase_url.strip():
+                raise ValueError("SUPABASE_URL is required when LMIO_STORE_BACKEND=supabase")
+            if not self.supabase_service_role_key.get_secret_value():
+                raise ValueError(
+                    "SUPABASE_SERVICE_ROLE_KEY is required when LMIO_STORE_BACKEND=supabase"
+                )
+            if not self.read_api_key.get_secret_value():
+                raise ValueError("LMIO_READ_API_KEY is required for a Supabase-backed runtime")
         return self
 
     def public_health(self) -> dict[str, str | bool]:
@@ -74,20 +140,48 @@ class Settings(BaseSettings):
 
         return {
             "environment": self.environment,
+            "insecure_local_reads_enabled": (
+                self.environment == "local" and self.allow_insecure_local_reads
+            ),
+            "demo_mode_enabled": self.enable_demo_mode,
             "default_language": self.default_language,
             "market": self.market,
             "can_trade": self.can_trade,
             "live_trading_enabled": self.live_trading_enabled,
             "paper_trading_enabled": self.paper_trading_enabled,
+            "store_backend": self.store_backend,
+            "release_sha": self.resolved_release_sha,
+            "release_label": self.release_label,
         }
+
+    @property
+    def resolved_release_sha(self) -> str:
+        """Prefer an explicit release SHA, then Vercel's immutable deployment SHA."""
+
+        if self.release_sha.strip() and self.release_sha != "unrecorded":
+            return self.release_sha.strip()
+        return self.vercel_git_commit_sha.strip() or "unrecorded"
 
     def integration_readiness(self) -> dict[str, bool]:
         return {
             "sec_configured": bool(self.sec_user_agent.strip()),
             "telegram_configured": bool(
-                self.telegram_bot_token.strip() and self.telegram_chat_id.strip()
+                self.telegram_bot_token.get_secret_value().strip()
+                and self.telegram_chat_id.get_secret_value().strip()
+            ),
+            "telegram_queries_configured": bool(
+                self.telegram_bot_token.get_secret_value().strip()
+                and self.telegram_chat_id.get_secret_value().strip()
+                and self.telegram_webhook_secret.get_secret_value()
+            ),
+            "finviz_configured": bool(self.finviz_api_token.get_secret_value()),
+            "scheduled_refresh_configured": bool(self.cron_secret.get_secret_value()),
+            "openai_research_configured": bool(
+                self.openai_api_key.get_secret_value() and self.openai_model.strip()
             ),
             "admin_api_key_configured": bool(self.admin_api_key.get_secret_value()),
+            "ibkr_bridge_configured": bool(self.ibkr_bridge_key.get_secret_value()),
+            "read_api_key_configured": bool(self.read_api_key.get_secret_value()),
         }
 
     def parsed_sec_watchlist(self) -> dict[str, str]:

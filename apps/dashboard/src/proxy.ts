@@ -1,0 +1,53 @@
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
+import { identityFromClaims } from "@/lib/auth/identity";
+import { getSupabaseEnvironment, hasSupabaseEnvironment } from "@/lib/supabase/env";
+
+const publicRoutes = new Set(["/sign-in", "/auth/callback", "/public-audit"]);
+
+export async function proxy(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  const isPublic = publicRoutes.has(pathname);
+  if (!hasSupabaseEnvironment()) {
+    return isPublic
+      ? NextResponse.next()
+      : NextResponse.redirect(new URL("/sign-in?error=configuration", request.url));
+  }
+
+  const env = getSupabaseEnvironment();
+  let response = NextResponse.next({ request });
+  const supabase = createServerClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    {
+      cookieOptions: {
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+      },
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll(values) {
+          values.forEach(({ name, value }) => request.cookies.set(name, value));
+          response = NextResponse.next({ request });
+          values.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options),
+          );
+          response.headers.set("Cache-Control", "private, no-store");
+        },
+      },
+    },
+  );
+
+  const { data, error } = await supabase.auth.getClaims();
+  const identity = error ? null : identityFromClaims(data?.claims);
+  if (!identity && !isPublic) return NextResponse.redirect(new URL("/sign-in", request.url));
+  if (identity && pathname === "/sign-in") {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
+  return response;
+}
+
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+};

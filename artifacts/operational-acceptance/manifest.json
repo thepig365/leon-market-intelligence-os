@@ -1,0 +1,54 @@
+{
+  "manifest_version": "lmio-operational-acceptance-v2",
+  "generated_at": "2026-08-02T00:00:00+10:00",
+  "starting_commit": "369fa1c29448782eea27cd5f47728ec6e4836227",
+  "branch": "codex/lmio-operational-acceptance",
+  "status": "draft_external_gates_pending",
+  "evidence_levels": {
+    "code": "complete_for_approved_scope",
+    "automated_tests": "passed_locally_210_tests_and_github_actions_run_30729536942",
+    "fixture_replay": "passed",
+    "real_authorised_data": "pending_new_redacted_run",
+    "scheduled_execution": "pending_three_us_trading_days",
+    "operator_acceptance": "pending_leon"
+  },
+  "checks": [
+    "ruff",
+    "pytest_full_suite",
+    "dashboard_eslint",
+    "dashboard_typecheck",
+    "dashboard_contract_test",
+    "dashboard_build",
+    "python_dependency_audit",
+    "dashboard_dependency_audit",
+    "git_diff_check"
+  ],
+  "canonical_pipeline_stages": 21,
+  "schema_version": 12,
+  "stage_22_resolution": "removed_from_executable_pipeline_planned_external_governance_integration",
+  "signal_stage": "signal_eligibility_check_with_separate_authenticated_operator_creation",
+  "scheduler_executor_process": "not_verified",
+  "github_actions": {
+    "run_id": 30729536942,
+    "run_number": 22,
+    "verified_commit": "f2e7972df7049b0f79a0e35a97cf6120ba1b5d39",
+    "conclusion": "success"
+  },
+  "trading": {
+    "can_trade": false,
+    "live_trading_enabled": false,
+    "paper_trading_enabled": false,
+    "broker_connection": false,
+    "order_execution": false
+  },
+  "external_blockers": [
+    "finviz_redacted_live_refresh",
+    "protected_runtime_smoke_test",
+    "supabase_migrations_and_rls_verification",
+    "three_consecutive_us_trading_days",
+    "live_outcome_progression",
+    "independent_review",
+    "leon_acceptance"
+  ],
+  "private_or_licensed_data_included": false
+}

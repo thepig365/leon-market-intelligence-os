@@ -4,19 +4,19 @@ build-backend = "hatchling.build"
 
 [project]
 name = "leon-market-intelligence-os"
-version = "0.2.0"
+version = "1.0.0rc1"
 description = "Evidence-backed market intelligence and decision support for United States equities"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.116,<1",
+  "httpx>=0.28,<1",
   "pydantic-settings>=2.10,<3",
   "uvicorn>=0.35,<1",
 ]
 
 [dependency-groups]
 dev = [
-  "httpx>=0.28,<1",
   "pytest>=8,<10",
   "ruff>=0.12,<1",
 ]

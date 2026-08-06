@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CompanyType(StrEnum):
@@ -22,6 +22,9 @@ class ModelRoute(BaseModel):
     preferred_models: list[str]
     supported_in_v1_engine: bool
     warning: str | None = None
+    not_applicable_reason: str | None = None
+    required_alternative_method: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=list)
 
 
 ROUTES = {
@@ -53,4 +56,13 @@ def route_models(company_type: CompanyType) -> ModelRoute:
         preferred_models=ROUTES[company_type],
         supported_in_v1_engine=supported,
         warning=warning,
+        not_applicable_reason=(
+            None
+            if supported
+            else "Generic cash-flow assumptions do not represent this company's economics."
+        ),
+        required_alternative_method=[] if supported else ROUTES[company_type],
+        missing_evidence=(
+            [] if supported else ["specialised_model_inputs", "independent_model_review"]
+        ),
     )
