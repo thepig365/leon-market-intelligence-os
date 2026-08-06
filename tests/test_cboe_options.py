@@ -14,13 +14,19 @@ from lmio.service import LMIOService
 
 
 def cboe_payload(*, empty: bool = False) -> dict[str, object]:
-    calls = [] if empty else [
-        {"symbol": "NVDA", "expires": "2026-08-21", "strike": 200, "volume": 120000},
-        {"symbol": "SPY", "expires": "2026-08-21", "strike": 700, "volume": 90000},
-    ]
-    puts = [] if empty else [
-        {"symbol": "NVDA", "expires": "2026-08-21", "strike": 180, "volume": 80000}
-    ]
+    calls = (
+        []
+        if empty
+        else [
+            {"symbol": "NVDA", "expires": "2026-08-21", "strike": 200, "volume": 120000},
+            {"symbol": "SPY", "expires": "2026-08-21", "strike": 700, "volume": 90000},
+        ]
+    )
+    puts = (
+        []
+        if empty
+        else [{"symbol": "NVDA", "expires": "2026-08-21", "strike": 180, "volume": 80000}]
+    )
     return {
         "categories": [
             {"category": "all", "calls": [], "puts": []},

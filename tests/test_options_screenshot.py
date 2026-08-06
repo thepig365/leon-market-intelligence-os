@@ -19,9 +19,7 @@ def data_url(mime_type: str, raw: bytes) -> str:
         ("image/webp", b"RIFF0000WEBPcontent"),
     ],
 )
-def test_options_screenshot_accepts_only_matching_image_content(
-    mime_type: str, raw: bytes
-) -> None:
+def test_options_screenshot_accepts_only_matching_image_content(mime_type: str, raw: bytes) -> None:
     assert validate_options_screenshot_data_url(data_url(mime_type, raw)) == (
         mime_type,
         len(raw),

@@ -220,10 +220,7 @@ async def telegram_webhook(request: Request) -> dict[str, str]:
         high_volume = dict(board.get("high_volume") or {})
         active_tickers = list(high_volume.get("tickers") or [])[:5]
         active_lines = [
-            (
-                f"- {dict(item).get('symbol')} · Cboe 榜单量 "
-                f"{dict(item).get('leaderboard_volume')}"
-            )
+            (f"- {dict(item).get('symbol')} · Cboe 榜单量 {dict(item).get('leaderboard_volume')}")
             for item in active_tickers
         ]
         if not candidates:
@@ -1582,8 +1579,7 @@ def _options_board_payload(symbol: str | None = None) -> dict[str, object]:
             }
             for item in records
             if item.get("source") == "openai_options_screenshot"
-            and dict(item.get("payload") or {}).get("record_type")
-            == "options_screenshot_analysis"
+            and dict(item.get("payload") or {}).get("record_type") == "options_screenshot_analysis"
         ),
         None,
     )

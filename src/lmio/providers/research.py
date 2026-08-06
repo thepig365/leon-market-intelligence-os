@@ -72,9 +72,7 @@ class OptionTickerAssessment(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     symbol: str
-    flow_bias: str = Field(
-        pattern="^(bullish_interest|bearish_interest|mixed|unclear)$"
-    )
+    flow_bias: str = Field(pattern="^(bullish_interest|bearish_interest|mixed|unclear)$")
     why_notable: str
     confirmation_needed: str
     invalidation_or_risk: str
