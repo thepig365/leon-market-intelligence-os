@@ -70,9 +70,7 @@ def _provider_statuses(store: Any, settings: Settings) -> dict[str, dict[str, ob
                     ),
                     "stale": stale,
                     "connected": bool(latest_payload.get("connected")) and not stale,
-                    "paper_account_confirmed": bool(
-                        latest_payload.get("paper_account_confirmed")
-                    ),
+                    "paper_account_confirmed": bool(latest_payload.get("paper_account_confirmed")),
                     "paper_order_permission_confirmed": bool(
                         latest_payload.get("paper_order_permission_confirmed")
                     ),
@@ -82,9 +80,7 @@ def _provider_statuses(store: Any, settings: Settings) -> dict[str, dict[str, ob
                         for item in news_providers
                         if isinstance(item, dict) and item.get("name")
                     ],
-                    "headline_probe_count": int(
-                        latest_payload.get("headline_probe_count") or 0
-                    ),
+                    "headline_probe_count": int(latest_payload.get("headline_probe_count") or 0),
                     "observed_at": latest_payload.get("observed_at"),
                     "data_scope": "status_and_provider_metadata_only",
                 }
@@ -199,9 +195,7 @@ def build_system_health(store: Any, settings: Settings) -> dict[str, object]:
             "CAN_TRADE": settings.can_trade,
             "LIVE_TRADING_ENABLED": settings.live_trading_enabled,
             "PAPER_TRADING_ENABLED": settings.paper_trading_enabled,
-            "ibkr_bridge_configured": settings.integration_readiness()[
-                "ibkr_bridge_configured"
-            ],
+            "ibkr_bridge_configured": settings.integration_readiness()["ibkr_bridge_configured"],
             "order_adapter_enabled": False,
             "order_endpoint_absent": True,
         },

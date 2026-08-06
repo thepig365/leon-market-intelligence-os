@@ -363,9 +363,7 @@ def test_full_refresh_is_bounded_to_authenticated_dashboard_operator(
     assert response.json()["trading_action"] is False
     assert response.json()["payment_action"] is False
     assert response.json()["unavailable_components"] == []
-    assert response.json()["partial_components"] == [
-        "official_macro_sec_and_ai_news"
-    ]
+    assert response.json()["partial_components"] == ["official_macro_sec_and_ai_news"]
     assert calls == ["finviz", "news", "outcomes", "performance"]
 
 

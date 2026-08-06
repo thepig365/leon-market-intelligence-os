@@ -547,9 +547,7 @@ def operator_full_refresh(
         component_statuses["system_health"] = "completed"
 
     finished_at = datetime.now(UTC)
-    partial = [
-        name for name, status in component_statuses.items() if status == "partial"
-    ]
+    partial = [name for name, status in component_statuses.items() if status == "partial"]
     status = "partial" if unavailable or partial else "succeeded"
     service.store.append_json(
         "system_events",
@@ -651,9 +649,7 @@ def providers_health() -> dict[str, Any]:
     # or macro health after Finviz and must not overwrite the Finviz card.
     for item in get_service().store.history_json("provider_health", 1000):
         provider = str(item.get("provider", "")).strip()
-        if not provider or (
-            provider in providers and "checked_at" in providers[provider]
-        ):
+        if not provider or (provider in providers and "checked_at" in providers[provider]):
             continue
         providers[provider] = {
             "provider": provider,

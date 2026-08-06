@@ -38,13 +38,15 @@ def _response(url: str, content: bytes) -> httpx.Response:
     )
 
 
-def _provider() -> FinvizAPIProvider:
+def _provider(*, vix_date: str = "07/31/2026") -> FinvizAPIProvider:
     return FinvizAPIProvider(
         "private-token",
         transport=lambda *_args: _response(FINVIZ_EXPORT_URL, _market_csv()),
         vix_transport=lambda *_args: _response(
             VIX_HISTORY_URL,
-            b"DATE,OPEN,HIGH,LOW,CLOSE\n07/30/2026,18,19,17,17.09\n07/31/2026,16,18,15,15.99\n",
+            (
+                f"DATE,OPEN,HIGH,LOW,CLOSE\n07/30/2026,18,19,17,17.09\n{vix_date},16,18,15,15.99\n"
+            ).encode(),
         ),
     )
 
@@ -71,7 +73,8 @@ def test_market_environment_uses_benchmarks_breadth_and_official_vix() -> None:
 def test_finviz_refresh_persists_verified_market_regime(tmp_path: Path) -> None:
     service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
 
-    result = service.refresh_finviz(provider=_provider())
+    recent_vix_date = datetime.now(UTC).strftime("%m/%d/%Y")
+    result = service.refresh_finviz(provider=_provider(vix_date=recent_vix_date))
     report = service.store.latest_json("reports")
     regimes = service.store.history_json("market_regimes")
 

@@ -44,9 +44,7 @@ def test_system_health_exposes_safe_current_ibkr_paper_status(tmp_path: Path) ->
                 "connected": True,
                 "paper_account_confirmed": True,
                 "paper_order_permission_confirmed": True,
-                "news_providers": [
-                    {"code": "DJNL", "name": "Dow Jones Newsletters"}
-                ],
+                "news_providers": [{"code": "DJNL", "name": "Dow Jones Newsletters"}],
                 "headline_probe_count": 0,
                 "data_scope": "status_and_provider_metadata_only",
             },
