@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Suspense } from "react";
 import { signOut } from "@/app/sign-in/actions";
 import { Navigation } from "@/components/navigation";
+import { RefreshControl } from "@/components/refresh-control";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -20,6 +22,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <p>中文优先 · 美股研究与决策支持 · 不执行交易</p>
         </div>
         <div className="headerActions">
+          <Suspense fallback={<span className="refreshLoading">刷新资料</span>}>
+            <RefreshControl returnPath={pathname} />
+          </Suspense>
           <div className="safety">CAN_TRADE = FALSE</div>
           <form action={signOut}>
             <button className="signOutButton" type="submit">退出</button>

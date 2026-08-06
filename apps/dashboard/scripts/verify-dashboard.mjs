@@ -44,6 +44,14 @@ const acceptanceActions = await readFile(
   new URL("../src/app/acceptance/actions.ts", import.meta.url),
   "utf8",
 );
+const refreshActions = await readFile(
+  new URL("../src/app/refresh/actions.ts", import.meta.url),
+  "utf8",
+);
+const refreshControl = await readFile(
+  new URL("../src/components/refresh-control.tsx", import.meta.url),
+  "utf8",
+);
 
 const expected = [
   "command-centre",
@@ -93,6 +101,23 @@ for (const forbidden of ["LMIO_READ_KEY", "SUPABASE_SERVICE_ROLE_KEY", "FINVIZ_A
 }
 if (!appShell.includes("不执行交易")) {
   throw new Error("Dashboard must display the no-trading boundary.");
+}
+if (!humanReadablePanels.includes("date(finviz.checked_at)") || !humanReadablePanels.includes("text(finviz.provider")) {
+  throw new Error("Finviz status must use Finviz-specific health evidence.");
+}
+if (!appShell.includes("RefreshControl") || !refreshControl.includes("刷新全部资料")) {
+  throw new Error("Authenticated pages must expose the full research refresh control.");
+}
+for (const required of ["requireIdentity", "owner", "operator", "refreshLMIO", "revalidatePath"]) {
+  if (!refreshActions.includes(required)) {
+    throw new Error(`Full refresh must retain its server-side identity boundary: ${required}`);
+  }
+}
+if (!runtime.includes("/api/v1/operator/full-refresh") || !runtime.includes("290_000")) {
+  throw new Error("Full refresh must use the bounded server-to-server runtime endpoint.");
+}
+if (!layout.includes("export const maxDuration = 300")) {
+  throw new Error("Full refresh Server Actions must retain the five-minute route ceiling.");
 }
 for (const required of [
   "/api/v1/acceptance",
@@ -153,10 +178,15 @@ if (humanReadablePanels.includes("查看原始来源")) {
 }
 for (const slug of expected) {
   if (
-    !["unusual-options", "paper-trades"].includes(slug) &&
+    !["unusual-options"].includes(slug) &&
     !humanReadablePanels.includes(`case "${slug}"`)
   ) {
     throw new Error(`Missing human-readable presenter for: ${slug}`);
+  }
+}
+for (const required of ["ibkr_tws_paper", "TWS 模拟账户", "系统没有订单接口"]) {
+  if (!humanReadablePanels.includes(required)) {
+    throw new Error(`Missing truthful IBKR paper status field: ${required}`);
   }
 }
 

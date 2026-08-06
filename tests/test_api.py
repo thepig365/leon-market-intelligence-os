@@ -60,6 +60,75 @@ def test_runtime_read_key_protects_non_health_routes(
     )
 
 
+def test_ibkr_bridge_records_only_minimal_paper_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "runtime.sqlite3",
+        environment="production",
+        ibkr_bridge_key="bridge-test-key",
+    )
+    service = LMIOService(settings)
+    monkeypatch.setattr("lmio.security.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.main.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.main.get_service", lambda: service)
+    response = request(
+        "POST",
+        "/api/v1/providers/ibkr/heartbeat",
+        headers={"x-lmio-ibkr-key": "bridge-test-key"},
+        json={
+            "observed_at": datetime.now(UTC).isoformat(),
+            "connected": True,
+            "paper_account_confirmed": True,
+            "paper_order_permission_confirmed": True,
+            "news_providers": [{"code": "DJNL", "name": "Dow Jones Newsletters"}],
+            "headline_probe_count": 0,
+            "bridge_version": "1",
+        },
+    )
+
+    assert response.status_code == 200
+    latest = service.store.latest_provider_health()
+    assert latest is not None
+    assert latest["provider"] == "ibkr_tws_paper"
+    assert latest["state"] == "ready"
+    assert latest["payload"]["data_scope"] == "status_and_provider_metadata_only"
+    assert "account_id" not in response.text
+
+
+def test_ibkr_bridge_rejects_sensitive_extra_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "runtime.sqlite3",
+        environment="production",
+        ibkr_bridge_key="bridge-test-key",
+    )
+    service = LMIOService(settings)
+    monkeypatch.setattr("lmio.security.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.main.get_service", lambda: service)
+    response = request(
+        "POST",
+        "/api/v1/providers/ibkr/heartbeat",
+        headers={"x-lmio-ibkr-key": "bridge-test-key"},
+        json={
+            "observed_at": datetime.now(UTC).isoformat(),
+            "connected": True,
+            "paper_account_confirmed": True,
+            "paper_order_permission_confirmed": True,
+            "news_providers": [],
+            "account_id": "must-never-be-accepted",
+        },
+    )
+
+    assert response.status_code == 422
+    assert service.store.latest_provider_health() is None
+
+
 def test_operational_lineage_api_is_protected_and_redacts_provider_rows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -144,6 +213,14 @@ def test_command_centre_combines_operating_status_without_secrets(
         },
     )
     service.store.append_json(
+        "provider_health",
+        {
+            "provider": "sec_edgar",
+            "state": "ready",
+            "payload": {"detail": "Official SEC refresh completed."},
+        },
+    )
+    service.store.append_json(
         "reports",
         {
             "report_type": "daily",
@@ -183,6 +260,9 @@ def test_command_centre_combines_operating_status_without_secrets(
     payload = response.json()
     assert payload["research_queue"][0]["symbol"] == "SNDK"
     assert payload["provider_health"]["finviz_elite_api"]["state"] == "ready"
+    assert payload["provider_health"]["finviz_elite_api"]["provider"] == "finviz_elite_api"
+    assert payload["provider_health"]["sec_edgar"]["state"] == "ready"
+    assert payload["latest_provider"]["provider"] == "sec_edgar"
     assert payload["telegram"]["private_queries_configured"] is True
     assert payload["safety"] == {
         "can_trade": False,
@@ -207,6 +287,84 @@ def test_mutating_api_is_closed_without_admin_key() -> None:
 
     news_analysis = request("POST", "/api/news/unknown/analyse")
     assert news_analysis.status_code == 503
+
+
+def test_full_refresh_is_bounded_to_authenticated_dashboard_operator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "runtime.sqlite3",
+        environment="production",
+        read_api_key="dashboard-service-secret",
+    )
+    service = LMIOService(settings)
+    calls: list[str] = []
+
+    def finviz_refresh() -> dict[str, object]:
+        calls.append("finviz")
+        return {"status": "completed"}
+
+    def news_refresh() -> dict[str, object]:
+        calls.append("news")
+        return {
+            "macro": {"status": "completed"},
+            "sec": {"status": "partial"},
+        }
+
+    def outcomes_refresh() -> dict[str, object]:
+        calls.append("outcomes")
+        return {"status": "completed"}
+
+    def performance_refresh() -> dict[str, object]:
+        calls.append("performance")
+        return {"status": "completed"}
+
+    monkeypatch.setattr(service, "refresh_finviz", finviz_refresh)
+    monkeypatch.setattr(service, "refresh_official_news", news_refresh)
+    monkeypatch.setattr(service, "process_due_outcomes", outcomes_refresh)
+    monkeypatch.setattr(service, "aggregate_strategy_performance", performance_refresh)
+    monkeypatch.setattr("lmio.main.build_system_health", lambda *_: {"status": "ok"})
+    monkeypatch.setattr("lmio.security.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.main.get_service", lambda: service)
+
+    missing_identity = request(
+        "POST",
+        "/api/v1/operator/full-refresh",
+        headers={"x-lmio-read-key": "dashboard-service-secret"},
+    )
+    assert missing_identity.status_code == 403
+    assert calls == []
+
+    reviewer = request(
+        "POST",
+        "/api/v1/operator/full-refresh",
+        headers={
+            "x-lmio-read-key": "dashboard-service-secret",
+            "x-lmio-actor-id": "reviewer-1",
+            "x-lmio-actor-role": "reviewer",
+        },
+    )
+    assert reviewer.status_code == 403
+    assert calls == []
+
+    response = request(
+        "POST",
+        "/api/v1/operator/full-refresh",
+        headers={
+            "x-lmio-read-key": "dashboard-service-secret",
+            "x-lmio-actor-id": "owner-1",
+            "x-lmio-actor-role": "owner",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "partial"
+    assert response.json()["trading_action"] is False
+    assert response.json()["payment_action"] is False
+    assert response.json()["unavailable_components"] == []
+    assert response.json()["partial_components"] == ["official_macro_sec_and_ai_news"]
+    assert calls == ["finviz", "news", "outcomes", "performance"]
 
 
 def test_synthetic_replay_is_disabled_even_for_admin_by_default(

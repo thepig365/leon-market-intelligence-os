@@ -76,9 +76,8 @@ export const dashboardSections: DashboardSection[] = [
     slug: "paper-trades",
     label: "模拟交易",
     eyebrow: "PAPER TRADING",
-    description: "按 V1 锁定决定关闭；系统不存在订单执行能力。",
-    endpoint: null,
-    deferred: true,
+    description: "查看本机 TWS 模拟账户连接；LMIO 下单引擎仍保持关闭。",
+    endpoint: "/api/v1/system-health",
   },
   {
     slug: "reports-journal",

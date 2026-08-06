@@ -60,7 +60,10 @@ must not be interpreted as current market information.
 
 ## Safety boundaries
 
-LMIO V1 has no broker adapter or order module. Startup is rejected if any of
+LMIO V1 has no order adapter or order module. An optional outbound-only local
+bridge can report whether Leon's paper TWS is connected and which IBKR news
+providers are available. It does not upload account IDs, balances, positions,
+orders or news content. Startup is rejected if any of
 these values is true:
 
 - `CAN_TRADE`
@@ -127,8 +130,11 @@ Then open `http://127.0.0.1:3000`. The dashboard performs authenticated,
 server-side, read-only requests to FastAPI and never receives provider,
 service-role, runtime-read or administrator credentials.
 
-HTTP mutations require `LMIO_ADMIN_API_KEY` and the `X-LMIO-Key` request
-header. The trusted local CLI does not expose a remote mutation surface.
+General HTTP mutations require `LMIO_ADMIN_API_KEY` and the `X-LMIO-Key`
+request header. The dashboard's bounded refresh action instead reuses the
+private server-to-server credential after verifying the Google/Supabase role;
+the browser never receives that credential. The trusted local CLI does not
+expose a remote mutation surface.
 
 ## Optional integrations
 
@@ -140,9 +146,21 @@ header. The trusted local CLI does not expose a remote mutation surface.
 - `OPENAI_API_KEY` and `LMIO_OPENAI_MODEL`: optional server-side,
   evidence-only research synthesis; both are blank and inactive by default;
 - `LMIO_ADMIN_API_KEY`: protects mutating HTTP endpoints.
+- `LMIO_IBKR_BRIDGE_KEY`: authenticates the minimal outbound-only local paper
+  TWS status heartbeat; see [`docs/IBKR_PAPER_BRIDGE.md`](docs/IBKR_PAPER_BRIDGE.md).
 - `LMIO_READ_API_KEY`: protects runtime reads outside the minimal health probe;
 - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: enable the isolated
   production store when `LMIO_STORE_BACKEND=supabase`.
+
+The protected dashboard also exposes **刷新全部资料** to active owner/operator
+accounts. It coordinates the bounded Finviz market/report refresh, official
+macro and SEC news refresh, AI news summaries, due-outcome processing, strategy
+performance aggregation and system-health update. Unavailable components are
+reported as partial while successful current evidence remains usable. It does
+not create an order, make a payment, change configuration or expose credentials
+to the browser. The dashboard allows up to five minutes for this bounded,
+read-only refresh so the runtime can return an accurate complete or partial
+result instead of a false timeout near the end of a verified production run.
 
 LMIO never reports an integration as working merely because its configuration
 exists. A successful read-only verification is required.

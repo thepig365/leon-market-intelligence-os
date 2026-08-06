@@ -1,6 +1,6 @@
 """LMIO FastAPI application and local read-only command centre."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from html import escape
 from typing import Annotated, Any
@@ -14,6 +14,7 @@ from lmio.audit import audit_event
 from lmio.config import get_settings
 from lmio.domain import NewsEvent
 from lmio.health_console import build_system_health
+from lmio.ibkr_bridge import IBKRBridgeHeartbeat
 from lmio.news import news_impact_score
 from lmio.news_plan import propose_news_plan
 from lmio.news_price import ConfirmationState, NewsPriceConfirmation
@@ -24,6 +25,8 @@ from lmio.scheduler import run_scheduled_job, scheduler_status
 from lmio.security import (
     require_admin,
     require_cron,
+    require_dashboard_refresh,
+    require_ibkr_bridge,
     require_telegram_webhook,
     valid_cron_credential,
     valid_read_credential,
@@ -73,9 +76,11 @@ async def require_runtime_read_key(request: Request, call_next: Any) -> Response
         request.headers.get("authorization"), request.headers.get("x-lmio-cron-key")
     )
     webhook_path = request.url.path == "/api/v1/telegram/webhook"
+    bridge_path = request.url.path == "/api/v1/providers/ibkr/heartbeat"
     if (
         request.url.path not in {"/health", "/favicon.ico"}
         and not webhook_path
+        and not bridge_path
         and not (read_allowed or cron_allowed)
     ):
         return JSONResponse(
@@ -299,6 +304,47 @@ def system_health() -> dict[str, object]:
     return build_system_health(get_service().store, get_settings())
 
 
+@app.post(
+    "/api/v1/providers/ibkr/heartbeat",
+    tags=["providers"],
+)
+def ibkr_bridge_heartbeat(
+    heartbeat: IBKRBridgeHeartbeat,
+    _principal: Annotated[Principal, Depends(require_ibkr_bridge)],
+) -> dict[str, object]:
+    """Record a minimal, outbound-only heartbeat from Leon's local paper TWS."""
+
+    now = datetime.now(UTC)
+    observed_at = heartbeat.observed_at.astimezone(UTC)
+    if observed_at < now - timedelta(minutes=5) or observed_at > now + timedelta(minutes=1):
+        raise HTTPException(
+            status_code=422,
+            detail="IBKR heartbeat timestamp is outside the allowed window.",
+        )
+    state = heartbeat.provider_state()
+    record_id = get_service().store.append_json(
+        "provider_health",
+        {
+            "provider": "ibkr_tws_paper",
+            "state": state,
+            "payload": heartbeat.safe_payload(),
+        },
+    )
+    audit_event(
+        "ibkr_bridge_heartbeat_recorded",
+        state=state,
+        paper_account_confirmed=heartbeat.paper_account_confirmed,
+        news_provider_count=len(heartbeat.news_providers),
+    )
+    return {
+        "status": "recorded",
+        "provider": "ibkr_tws_paper",
+        "state": state,
+        "record_id": record_id,
+        "recorded_at": now.isoformat(),
+    }
+
+
 def _latest_acceptance_feedback() -> list[dict[str, Any]]:
     return [
         item
@@ -416,6 +462,125 @@ class AcceptanceControlInput(BaseModel):
     )
 
 
+@app.post("/api/v1/operator/full-refresh", tags=["system"])
+def operator_full_refresh(
+    principal: Annotated[Principal, Depends(require_dashboard_refresh)],
+) -> dict[str, object]:
+    """Refresh every connected research source without one long pipeline request.
+
+    This endpoint is intentionally narrow: it has no arbitrary action input and
+    no trading, payment, configuration, or account-management capability.
+    """
+
+    service = get_service()
+    started_at = datetime.now(UTC)
+    run_id = f"operator-refresh-{started_at:%Y%m%dT%H%M%S}"
+    component_statuses: dict[str, str] = {}
+    unavailable: list[str] = []
+
+    refreshes = (
+        ("finviz_market_strategy_and_report", service.refresh_finviz),
+        ("official_macro_sec_and_ai_news", service.refresh_official_news),
+        ("due_outcomes", service.process_due_outcomes),
+        ("strategy_performance", service.aggregate_strategy_performance),
+    )
+    for component, refresh in refreshes:
+        try:
+            result = refresh()
+        except Exception as error:
+            component_statuses[component] = "unavailable"
+            unavailable.append(component)
+            service.store.append_json(
+                "system_events",
+                {
+                    "event_type": "operator_refresh_component_unavailable",
+                    "severity": "warning",
+                    "payload": {
+                        "run_id": run_id,
+                        "component": component,
+                        "error_class": type(error).__name__,
+                        "trading_action": False,
+                        "payment_action": False,
+                    },
+                },
+            )
+            continue
+
+        raw_status = str(result.get("status", "completed"))
+        nested_statuses = {
+            str(value.get("status"))
+            for value in result.values()
+            if isinstance(value, dict) and value.get("status") is not None
+        }
+        if raw_status in {"failed", "unavailable"} or nested_statuses.intersection(
+            {"failed", "unavailable"}
+        ):
+            component_statuses[component] = "unavailable"
+            unavailable.append(component)
+        elif raw_status in {"partial", "degraded"} or nested_statuses.intersection(
+            {"partial", "degraded", "disabled"}
+        ):
+            component_statuses[component] = "partial"
+        else:
+            component_statuses[component] = "completed"
+
+    try:
+        build_system_health(service.store, service.settings)
+    except Exception as error:
+        component_statuses["system_health"] = "unavailable"
+        unavailable.append("system_health")
+        service.store.append_json(
+            "system_events",
+            {
+                "event_type": "operator_refresh_component_unavailable",
+                "severity": "warning",
+                "payload": {
+                    "run_id": run_id,
+                    "component": "system_health",
+                    "error_class": type(error).__name__,
+                    "trading_action": False,
+                    "payment_action": False,
+                },
+            },
+        )
+    else:
+        component_statuses["system_health"] = "completed"
+
+    finished_at = datetime.now(UTC)
+    partial = [name for name, status in component_statuses.items() if status == "partial"]
+    status = "partial" if unavailable or partial else "succeeded"
+    service.store.append_json(
+        "system_events",
+        {
+            "event_type": "operator_full_refresh",
+            "severity": status,
+            "payload": {
+                "actor": principal.actor_id,
+                "role": principal.role,
+                "run_id": run_id,
+                "completed_at": finished_at.isoformat(),
+                "component_statuses": component_statuses,
+                "unavailable_components": unavailable,
+                "partial_components": partial,
+                "trading_action": False,
+                "payment_action": False,
+            },
+        },
+    )
+    return {
+        "status": status,
+        "run_id": run_id,
+        "started_at": started_at.isoformat(),
+        "finished_at": finished_at.isoformat(),
+        "duration_ms": int((finished_at - started_at).total_seconds() * 1000),
+        "component_statuses": component_statuses,
+        "unavailable_components": unavailable,
+        "partial_components": partial,
+        "trading_action": False,
+        "payment_action": False,
+    }
+
+
 @app.post("/api/v1/acceptance/control", tags=["system"])
 def acceptance_control(
     payload: AcceptanceControlInput,
@@ -479,12 +644,18 @@ def providers_health() -> dict[str, Any]:
         }
         for name, configured in readiness.items()
     }
-    latest_provider = get_service().store.latest_provider_health()
-    if latest_provider is not None:
-        providers[latest_provider["provider"]] = {
-            "state": latest_provider["state"],
-            "detail": latest_provider["payload"].get("detail"),
-            "checked_at": latest_provider["created_at"],
+    # Provider cards must use the latest result for that provider, not the
+    # latest result across every provider. A news refresh commonly writes SEC
+    # or macro health after Finviz and must not overwrite the Finviz card.
+    for item in get_service().store.history_json("provider_health", 1000):
+        provider = str(item.get("provider", "")).strip()
+        if not provider or (provider in providers and "checked_at" in providers[provider]):
+            continue
+        providers[provider] = {
+            "provider": provider,
+            "state": item.get("state", "unavailable"),
+            "detail": dict(item.get("payload") or {}).get("detail"),
+            "checked_at": item.get("created_at"),
         }
     return providers
 

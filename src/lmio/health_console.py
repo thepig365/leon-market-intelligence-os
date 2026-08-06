@@ -1,7 +1,6 @@
 """Truthful five-layer operational health assembled from persisted runtime evidence."""
 
-from datetime import UTC, datetime
-from importlib.util import find_spec
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from lmio.config import Settings
@@ -29,6 +28,7 @@ def _provider_statuses(store: Any, settings: Settings) -> dict[str, dict[str, ob
         "sec_edgar": readiness["sec_configured"],
         "telegram": readiness["telegram_configured"],
         "official_macro": True,
+        "ibkr_tws_paper": readiness["ibkr_bridge_configured"],
     }
     result: dict[str, dict[str, object]] = {}
     for provider in sorted(set(configured) | set(grouped)):
@@ -46,7 +46,7 @@ def _provider_statuses(store: Any, settings: Settings) -> dict[str, dict[str, ob
         latency_ms = (
             int((finished - started).total_seconds() * 1000) if started and finished else None
         )
-        result[provider] = {
+        provider_status: dict[str, object] = {
             "configured": configured.get(provider, True),
             "last_attempt": latest.get("created_at"),
             "last_success": next(
@@ -59,6 +59,33 @@ def _provider_statuses(store: Any, settings: Settings) -> dict[str, dict[str, ob
             "current_state": latest.get("state", "not_verified"),
             "last_error_category": latest_payload.get("error_category"),
         }
+        if provider == "ibkr_tws_paper":
+            observed_at = _parse_time(latest_payload.get("observed_at"))
+            stale = observed_at is None or datetime.now(UTC) - observed_at > timedelta(minutes=3)
+            news_providers = list(latest_payload.get("news_providers") or [])
+            provider_status.update(
+                {
+                    "current_state": (
+                        "degraded" if stale and latest else provider_status["current_state"]
+                    ),
+                    "stale": stale,
+                    "connected": bool(latest_payload.get("connected")) and not stale,
+                    "paper_account_confirmed": bool(latest_payload.get("paper_account_confirmed")),
+                    "paper_order_permission_confirmed": bool(
+                        latest_payload.get("paper_order_permission_confirmed")
+                    ),
+                    "news_provider_count": len(news_providers),
+                    "news_provider_names": [
+                        str(item.get("name"))
+                        for item in news_providers
+                        if isinstance(item, dict) and item.get("name")
+                    ],
+                    "headline_probe_count": int(latest_payload.get("headline_probe_count") or 0),
+                    "observed_at": latest_payload.get("observed_at"),
+                    "data_scope": "status_and_provider_metadata_only",
+                }
+            )
+        result[provider] = provider_status
     return result
 
 
@@ -168,9 +195,8 @@ def build_system_health(store: Any, settings: Settings) -> dict[str, object]:
             "CAN_TRADE": settings.can_trade,
             "LIVE_TRADING_ENABLED": settings.live_trading_enabled,
             "PAPER_TRADING_ENABLED": settings.paper_trading_enabled,
-            "broker_package_absent": all(
-                find_spec(name) is None for name in ("ib_insync", "ibapi", "alpaca_trade_api")
-            ),
+            "ibkr_bridge_configured": settings.integration_readiness()["ibkr_bridge_configured"],
+            "order_adapter_enabled": False,
             "order_endpoint_absent": True,
         },
         "stale_or_unknown": stale_items,

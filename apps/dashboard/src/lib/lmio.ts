@@ -118,3 +118,43 @@ export async function mutateLMIO(
     };
   }
 }
+
+export async function refreshLMIO(identity: {
+  id: string;
+  role: "owner" | "operator";
+}): Promise<LMIOResult> {
+  const checkedAt = new Date().toISOString();
+  try {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/operator/full-refresh`, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        ...(await runtimeHeaders()),
+        "x-lmio-actor-id": identity.id,
+        "x-lmio-actor-role": identity.role,
+      },
+      // The verified production refresh currently completes in about four
+      // minutes. Keep the browser-facing server action below Vercel's
+      // five-minute ceiling while allowing the bounded runtime coordinator to
+      // return its complete/partial result instead of reporting a false
+      // timeout just before completion.
+      signal: AbortSignal.timeout(290_000),
+    });
+    if (!response.ok) {
+      console.error("LMIO full refresh returned a non-success status", response.status);
+      return {
+        state: "unavailable",
+        message: `资料刷新未完成（${response.status}）；旧资料保持不变。`,
+        checkedAt,
+      };
+    }
+    return { state: "ready", data: await response.json(), checkedAt };
+  } catch (error) {
+    logRuntimeFailure("LMIO full refresh failed", error);
+    return {
+      state: "unavailable",
+      message: "资料刷新服务暂时不可用；旧资料保持不变。",
+      checkedAt,
+    };
+  }
+}

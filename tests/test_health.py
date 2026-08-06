@@ -36,6 +36,7 @@ def test_service_readiness_does_not_claim_integrations_are_working(tmp_path: Pat
         "scheduled_refresh_configured": False,
         "openai_research_configured": False,
         "admin_api_key_configured": False,
+        "ibkr_bridge_configured": False,
         "read_api_key_configured": False,
     }
     assert service.store.counts()["reports"] == 0

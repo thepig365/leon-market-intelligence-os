@@ -15,6 +15,8 @@ def test_safe_defaults_are_locked() -> None:
     assert settings.allow_insecure_local_reads is False
     assert settings.finviz_api_token.get_secret_value() == ""
     assert settings.cron_secret.get_secret_value() == ""
+    assert settings.ibkr_bridge_key.get_secret_value() == ""
+    assert settings.integration_readiness()["ibkr_bridge_configured"] is False
     assert settings.parsed_sec_watchlist() == {
         "AAPL": "320193",
         "META": "1326801",

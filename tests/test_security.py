@@ -8,6 +8,8 @@ from lmio.main import app
 from lmio.security import (
     require_admin,
     require_cron,
+    require_dashboard_refresh,
+    require_ibkr_bridge,
     require_telegram_webhook,
     valid_cron_credential,
     valid_read_credential,
@@ -35,6 +37,21 @@ def test_admin_api_uses_constant_time_key_check(monkeypatch: pytest.MonkeyPatch)
     require_admin("approved-test-key")
     with pytest.raises(HTTPException) as result:
         require_admin("wrong")
+    assert result.value.status_code == 401
+
+
+def test_ibkr_bridge_has_its_own_constant_time_credential(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "lmio.security.get_settings",
+        lambda: Settings(_env_file=None, ibkr_bridge_key=SecretStr("bridge-test-key")),
+    )
+
+    principal = require_ibkr_bridge("bridge-test-key")
+    assert principal.actor_id == "ibkr-local-bridge"
+    with pytest.raises(HTTPException) as result:
+        require_ibkr_bridge("wrong")
     assert result.value.status_code == 401
 
 
@@ -119,7 +136,12 @@ def test_controlled_test_environment_allows_read_bypass(
 
 def test_every_mutating_route_is_admin_protected() -> None:
     mutating_methods = {"POST", "PUT", "PATCH", "DELETE"}
-    accepted_guards = {require_admin, require_telegram_webhook}
+    accepted_guards = {
+        require_admin,
+        require_dashboard_refresh,
+        require_ibkr_bridge,
+        require_telegram_webhook,
+    }
 
     for route in app.routes:
         if not isinstance(route, APIRoute) or not route.methods.intersection(mutating_methods):

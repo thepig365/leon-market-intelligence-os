@@ -28,6 +28,7 @@ separate `lmio_*` table namespace in the same Supabase project:
 ```text
 Browser -> LMIO dashboard -> Bayview Supabase identity
                          \-> server-only LMIO_READ_API_KEY -> FastAPI
+                         \-> owner/operator -> bounded research refresh
 FastAPI -> server-only service role -> lmio_* tables
 ```
 
@@ -70,7 +71,13 @@ remain explicit rather than receiving a guessed CIK.
 - Secrets exist only in environment variables or a managed secret store.
 - Secret-bearing audit fields are recursively redacted.
 - Health output reveals configuration presence, never values.
-- Mutating HTTP routes require an administrator API key.
+- General mutating HTTP routes require an administrator API key. The sole
+  exception is the fixed full-research refresh endpoint: it accepts no action
+  parameters, requires an owner/operator Google session at the dashboard plus
+  the server-only runtime credential, coordinates bounded provider and derived
+  evidence refreshes without placing the 21-stage scheduled pipeline inside one
+  browser request, and has no trading, payment, settings or account-management
+  capability.
 - No broker/order package exists.
 - All trading and paper-trading flags are validated false at startup.
 

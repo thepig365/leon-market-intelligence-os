@@ -223,6 +223,62 @@ a:focus-visible {
   gap: 12px;
 }
 
+.refreshControl {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.refreshButton {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--on-accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 800;
+  min-height: 38px;
+  padding: 6px 14px;
+}
+
+.refreshButton:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.refreshLoading {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.refreshButton:focus-visible {
+  outline: 3px solid #9be8ba;
+  outline-offset: 3px;
+}
+
+.refreshMessage {
+  color: var(--muted);
+  font-size: 0.72rem;
+  margin: 0;
+  max-width: 280px;
+  text-align: right;
+}
+
+.refreshMessage-complete {
+  color: #9be8ba;
+}
+
+.refreshMessage-partial {
+  color: #ffd48a;
+}
+
+.refreshMessage-failed,
+.refreshMessage-unauthorized {
+  color: #ff9c91;
+}
+
 .signOutButton {
   background: transparent;
   border: 1px solid var(--line);
@@ -1187,6 +1243,15 @@ footer {
   .headerActions {
     align-items: flex-start;
     flex-wrap: wrap;
+  }
+
+  .refreshControl {
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .refreshMessage {
+    text-align: left;
   }
 
   main {
