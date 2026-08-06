@@ -99,6 +99,9 @@ class Settings(BaseSettings):
         default=6.0, ge=0, validation_alias="LMIO_OPENAI_OUTPUT_USD_PER_MILLION"
     )
     admin_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="LMIO_ADMIN_API_KEY")
+    ibkr_bridge_key: SecretStr = Field(
+        default=SecretStr(""), validation_alias="LMIO_IBKR_BRIDGE_KEY"
+    )
     owner_identity: str = Field(default="leon", validation_alias="LMIO_OWNER_IDENTITY")
     release_sha: str = Field(default="unrecorded", validation_alias="LMIO_RELEASE_SHA")
     vercel_git_commit_sha: str = Field(default="", validation_alias="VERCEL_GIT_COMMIT_SHA")
@@ -177,6 +180,7 @@ class Settings(BaseSettings):
                 self.openai_api_key.get_secret_value() and self.openai_model.strip()
             ),
             "admin_api_key_configured": bool(self.admin_api_key.get_secret_value()),
+            "ibkr_bridge_configured": bool(self.ibkr_bridge_key.get_secret_value()),
             "read_api_key_configured": bool(self.read_api_key.get_secret_value()),
         }
 

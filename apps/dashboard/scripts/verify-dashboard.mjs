@@ -178,10 +178,15 @@ if (humanReadablePanels.includes("查看原始来源")) {
 }
 for (const slug of expected) {
   if (
-    !["unusual-options", "paper-trades"].includes(slug) &&
+    !["unusual-options"].includes(slug) &&
     !humanReadablePanels.includes(`case "${slug}"`)
   ) {
     throw new Error(`Missing human-readable presenter for: ${slug}`);
+  }
+}
+for (const required of ["ibkr_tws_paper", "TWS 模拟账户", "系统没有订单接口"]) {
+  if (!humanReadablePanels.includes(required)) {
+    throw new Error(`Missing truthful IBKR paper status field: ${required}`);
   }
 }
 

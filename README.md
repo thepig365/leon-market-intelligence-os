@@ -60,7 +60,10 @@ must not be interpreted as current market information.
 
 ## Safety boundaries
 
-LMIO V1 has no broker adapter or order module. Startup is rejected if any of
+LMIO V1 has no order adapter or order module. An optional outbound-only local
+bridge can report whether Leon's paper TWS is connected and which IBKR news
+providers are available. It does not upload account IDs, balances, positions,
+orders or news content. Startup is rejected if any of
 these values is true:
 
 - `CAN_TRADE`
@@ -143,6 +146,8 @@ expose a remote mutation surface.
 - `OPENAI_API_KEY` and `LMIO_OPENAI_MODEL`: optional server-side,
   evidence-only research synthesis; both are blank and inactive by default;
 - `LMIO_ADMIN_API_KEY`: protects mutating HTTP endpoints.
+- `LMIO_IBKR_BRIDGE_KEY`: authenticates the minimal outbound-only local paper
+  TWS status heartbeat; see [`docs/IBKR_PAPER_BRIDGE.md`](docs/IBKR_PAPER_BRIDGE.md).
 - `LMIO_READ_API_KEY`: protects runtime reads outside the minimal health probe;
 - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: enable the isolated
   production store when `LMIO_STORE_BACKEND=supabase`.

@@ -28,6 +28,26 @@ def require_admin(
     )
 
 
+def require_ibkr_bridge(
+    x_lmio_ibkr_key: Annotated[str | None, Header()] = None,
+) -> Principal:
+    """Authenticate the outbound-only local TWS status bridge."""
+
+    expected = get_settings().ibkr_bridge_key.get_secret_value()
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="IBKR bridge is disabled until LMIO_IBKR_BRIDGE_KEY is configured.",
+        )
+    if not x_lmio_ibkr_key or not hmac.compare_digest(x_lmio_ibkr_key, expected):
+        raise HTTPException(status_code=401, detail="Invalid IBKR bridge credential.")
+    return Principal(
+        actor_id="ibkr-local-bridge",
+        role=Role.OPERATOR,
+        authentication_method="ibkr_bridge_key",
+    )
+
+
 def require_dashboard_refresh(
     x_lmio_read_key: Annotated[str | None, Header()] = None,
     x_lmio_actor_id: Annotated[str | None, Header()] = None,

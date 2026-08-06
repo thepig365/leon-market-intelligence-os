@@ -642,17 +642,17 @@ function ReportsPanel({ result }: { result: LMIOResult }) {
 function HealthPanel({ result }: { result: LMIOResult }) {
   if (result.state !== "ready") return <StatePanel result={result} title="系统健康状态暂时不可用" />;
   const health = record(result.data);
-  const integrations = record(health.integrations);
-  const providers = record(health.latest_provider);
+  const providers = record(health.providers);
+  const ibkr = record(providers.ibkr_tws_paper);
+  const safety = record(health.safety);
   const facts = [
     ["服务状态", text(health.status, "待检查")],
-    ["运行环境", text(health.environment)],
-    ["数据提供商", text(providers.provider, text(health.provider_status, "尚未连接"))],
-    ["提供商状态", text(providers.state, text(health.provider_status, "待检查"))],
-    ["执行交易", health.can_trade === true ? "已启用" : "关闭"],
-    ["实盘交易", health.live_trading_enabled === true ? "已启用" : "关闭"],
-    ["模拟交易", health.paper_trading_enabled === true ? "已启用" : "关闭"],
-    ["Telegram 提醒", integrations.telegram === true ? "已连接" : "未连接或待检查"],
+    ["TWS 本机桥接", ibkr.connected === true ? "已连接" : text(ibkr.current_state, "尚未连接")],
+    ["模拟账户", ibkr.paper_account_confirmed === true ? "已确认" : "未确认"],
+    ["IBKR 新闻源", `${Number(ibkr.news_provider_count ?? 0)} 个`],
+    ["最近状态", date(ibkr.observed_at)],
+    ["LMIO 模拟下单", safety.PAPER_TRADING_ENABLED === true ? "已启用" : "关闭"],
+    ["LMIO 实盘交易", safety.LIVE_TRADING_ENABLED === true ? "已启用" : "关闭"],
   ];
   return (
     <section className="researchView">
@@ -666,9 +666,49 @@ function HealthPanel({ result }: { result: LMIOResult }) {
       <section className="noticeList">
         <h2>安全边界</h2>
         <ul>
+          <li>本机桥接只同步连接状态和新闻源名称，不上传账户号、余额、持仓或订单。</li>
           <li>LMIO 只提供市场研究和决策支持。</li>
           <li>新闻、图形或评分都不能单独触发订单。</li>
           <li>缺失或过期的数据会明确标记，不会被演示数据替代。</li>
+        </ul>
+      </section>
+    </section>
+  );
+}
+
+function PaperTradingPanel({ result }: { result: LMIOResult }) {
+  if (result.state !== "ready") return <StatePanel result={result} title="IBKR 模拟账户状态暂时不可用" />;
+  const health = record(result.data);
+  const providers = record(health.providers);
+  const ibkr = record(providers.ibkr_tws_paper);
+  const safety = record(health.safety);
+  const providerNames = list(ibkr.news_provider_names).map((item) => text(item)).filter(Boolean);
+  return (
+    <section className="researchView">
+      <div className="settingsGrid">
+        <article className="plainCard">
+          <p className="eyebrow">LOCAL PAPER TWS</p>
+          <h2>{ibkr.connected === true ? "TWS 模拟账户已连接" : "TWS 模拟账户尚未连接"}</h2>
+          <dl className="factList">
+            <div><dt>模拟账户</dt><dd>{ibkr.paper_account_confirmed === true ? "已确认" : "未确认"}</dd></div>
+            <div><dt>TWS 模拟权限</dt><dd>{ibkr.paper_order_permission_confirmed === true ? "已确认" : "未确认"}</dd></div>
+            <div><dt>最近状态</dt><dd>{date(ibkr.observed_at)}</dd></div>
+            <div><dt>状态是否过期</dt><dd>{ibkr.stale === true ? "是，请启动本机桥接" : "否"}</dd></div>
+          </dl>
+        </article>
+        <article className="plainCard">
+          <p className="eyebrow">RESEARCH FEEDS</p>
+          <h2>IBKR 新闻源</h2>
+          <p>{providerNames.length ? providerNames.join("、") : "尚未从 TWS 读取新闻源。"}</p>
+          <p className="safetyLine">只同步来源名称；新闻内容、账户资料和交易资料不会由此桥接上传。</p>
+        </article>
+      </div>
+      <section className="noticeList">
+        <h2>执行安全</h2>
+        <ul>
+          <li>LMIO 模拟下单引擎：{safety.PAPER_TRADING_ENABLED === true ? "已启用" : "关闭"}</li>
+          <li>LMIO 实盘交易：{safety.LIVE_TRADING_ENABLED === true ? "已启用" : "关闭"}</li>
+          <li>系统没有订单接口；连接 TWS 不等于允许 LMIO 下单。</li>
         </ul>
       </section>
     </section>
@@ -740,6 +780,7 @@ export function HumanReadablePanel({
     case "watchlists": return <WatchlistPanel result={result} />;
     case "conditional-plans": return <PlansPanel result={result} />;
     case "reports-journal": return <ReportsPanel result={result} />;
+    case "paper-trades": return <PaperTradingPanel result={result} />;
     case "system-health": return <HealthPanel result={result} />;
     case "settings": return <SettingsPanel result={result} />;
     default: return <StatePanel result={result} title="模块状态" />;

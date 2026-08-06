@@ -1,6 +1,6 @@
 """LMIO FastAPI application and local read-only command centre."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from html import escape
 from typing import Annotated, Any
@@ -14,6 +14,7 @@ from lmio.audit import audit_event
 from lmio.config import get_settings
 from lmio.domain import NewsEvent
 from lmio.health_console import build_system_health
+from lmio.ibkr_bridge import IBKRBridgeHeartbeat
 from lmio.news import news_impact_score
 from lmio.news_plan import propose_news_plan
 from lmio.news_price import ConfirmationState, NewsPriceConfirmation
@@ -25,6 +26,7 @@ from lmio.security import (
     require_admin,
     require_cron,
     require_dashboard_refresh,
+    require_ibkr_bridge,
     require_telegram_webhook,
     valid_cron_credential,
     valid_read_credential,
@@ -74,9 +76,11 @@ async def require_runtime_read_key(request: Request, call_next: Any) -> Response
         request.headers.get("authorization"), request.headers.get("x-lmio-cron-key")
     )
     webhook_path = request.url.path == "/api/v1/telegram/webhook"
+    bridge_path = request.url.path == "/api/v1/providers/ibkr/heartbeat"
     if (
         request.url.path not in {"/health", "/favicon.ico"}
         and not webhook_path
+        and not bridge_path
         and not (read_allowed or cron_allowed)
     ):
         return JSONResponse(
@@ -298,6 +302,47 @@ def api_status() -> dict[str, Any]:
 @app.get("/api/v1/system-health", tags=["system"])
 def system_health() -> dict[str, object]:
     return build_system_health(get_service().store, get_settings())
+
+
+@app.post(
+    "/api/v1/providers/ibkr/heartbeat",
+    tags=["providers"],
+)
+def ibkr_bridge_heartbeat(
+    heartbeat: IBKRBridgeHeartbeat,
+    _principal: Annotated[Principal, Depends(require_ibkr_bridge)],
+) -> dict[str, object]:
+    """Record a minimal, outbound-only heartbeat from Leon's local paper TWS."""
+
+    now = datetime.now(UTC)
+    observed_at = heartbeat.observed_at.astimezone(UTC)
+    if observed_at < now - timedelta(minutes=5) or observed_at > now + timedelta(minutes=1):
+        raise HTTPException(
+            status_code=422,
+            detail="IBKR heartbeat timestamp is outside the allowed window.",
+        )
+    state = heartbeat.provider_state()
+    record_id = get_service().store.append_json(
+        "provider_health",
+        {
+            "provider": "ibkr_tws_paper",
+            "state": state,
+            "payload": heartbeat.safe_payload(),
+        },
+    )
+    audit_event(
+        "ibkr_bridge_heartbeat_recorded",
+        state=state,
+        paper_account_confirmed=heartbeat.paper_account_confirmed,
+        news_provider_count=len(heartbeat.news_providers),
+    )
+    return {
+        "status": "recorded",
+        "provider": "ibkr_tws_paper",
+        "state": state,
+        "record_id": record_id,
+        "recorded_at": now.isoformat(),
+    }
 
 
 def _latest_acceptance_feedback() -> list[dict[str, Any]]:

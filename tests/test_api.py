@@ -60,6 +60,75 @@ def test_runtime_read_key_protects_non_health_routes(
     )
 
 
+def test_ibkr_bridge_records_only_minimal_paper_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "runtime.sqlite3",
+        environment="production",
+        ibkr_bridge_key="bridge-test-key",
+    )
+    service = LMIOService(settings)
+    monkeypatch.setattr("lmio.security.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.main.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.main.get_service", lambda: service)
+    response = request(
+        "POST",
+        "/api/v1/providers/ibkr/heartbeat",
+        headers={"x-lmio-ibkr-key": "bridge-test-key"},
+        json={
+            "observed_at": datetime.now(UTC).isoformat(),
+            "connected": True,
+            "paper_account_confirmed": True,
+            "paper_order_permission_confirmed": True,
+            "news_providers": [{"code": "DJNL", "name": "Dow Jones Newsletters"}],
+            "headline_probe_count": 0,
+            "bridge_version": "1",
+        },
+    )
+
+    assert response.status_code == 200
+    latest = service.store.latest_provider_health()
+    assert latest is not None
+    assert latest["provider"] == "ibkr_tws_paper"
+    assert latest["state"] == "ready"
+    assert latest["payload"]["data_scope"] == "status_and_provider_metadata_only"
+    assert "account_id" not in response.text
+
+
+def test_ibkr_bridge_rejects_sensitive_extra_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "runtime.sqlite3",
+        environment="production",
+        ibkr_bridge_key="bridge-test-key",
+    )
+    service = LMIOService(settings)
+    monkeypatch.setattr("lmio.security.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.main.get_service", lambda: service)
+    response = request(
+        "POST",
+        "/api/v1/providers/ibkr/heartbeat",
+        headers={"x-lmio-ibkr-key": "bridge-test-key"},
+        json={
+            "observed_at": datetime.now(UTC).isoformat(),
+            "connected": True,
+            "paper_account_confirmed": True,
+            "paper_order_permission_confirmed": True,
+            "news_providers": [],
+            "account_id": "must-never-be-accepted",
+        },
+    )
+
+    assert response.status_code == 422
+    assert service.store.latest_provider_health() is None
+
+
 def test_operational_lineage_api_is_protected_and_redacts_provider_rows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
