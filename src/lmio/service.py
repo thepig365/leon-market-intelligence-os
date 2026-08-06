@@ -24,6 +24,7 @@ from lmio.official_news_monitor import monitor_official_news
 from lmio.outcomes import TimedPrice, evaluate_timed_horizon
 from lmio.pipeline import OperationalPipeline, StageResult, StageStatus
 from lmio.providers.base import ProviderState
+from lmio.providers.cboe_options import CboeMostActiveProvider, snapshot_payload
 from lmio.providers.finviz_api import FinvizAPIProvider
 from lmio.providers.official_rss import OfficialRSSProvider
 from lmio.providers.research import OpenAINewsWorker
@@ -1210,6 +1211,51 @@ class LMIOService:
             "candidates_found": len(report["top_10"]),
             "telegram": delivery,
             "generated_at": report["generated_at"],
+        }
+
+    def refresh_cboe_options(
+        self,
+        *,
+        provider: CboeMostActiveProvider | None = None,
+    ) -> dict[str, object]:
+        """Refresh the free Cboe leaderboard without creating trade signals."""
+
+        provider = provider or CboeMostActiveProvider()
+        try:
+            snapshot = provider.snapshot()
+        except Exception as error:
+            self.store.append_json(
+                "provider_health",
+                {
+                    "provider": provider.name,
+                    "state": "unavailable",
+                    "payload": {
+                        "detail": type(error).__name__,
+                        "failed_safely": True,
+                        "execution_allowed": False,
+                    },
+                },
+            )
+            raise RuntimeError("Cboe options-volume refresh failed safely") from error
+
+        payload = snapshot_payload(snapshot)
+        state = "ready" if snapshot.total_contracts else "no_current_session_data"
+        self.store.append_json(
+            "provider_health",
+            {
+                "provider": provider.name,
+                "state": state,
+                "payload": payload,
+            },
+        )
+        return {
+            "status": "completed",
+            "provider": provider.name,
+            "state": state,
+            "contracts_received": snapshot.total_contracts,
+            "tickers_received": len(snapshot.high_volume_tickers()),
+            "market_timestamp": snapshot.market_timestamp.isoformat(),
+            "execution_allowed": False,
         }
 
     def finviz_symbol_snapshot(

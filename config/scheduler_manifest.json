@@ -17,6 +17,13 @@
       "requires": ["FINVIZ_API_TOKEN"]
     },
     {
+      "id": "cboe-options-volume-refresh",
+      "purpose": "Refresh the free delayed Cboe most-active equity-options leaderboard",
+      "command": "python -m lmio.cli scheduled-job --job-id cboe-options-volume-refresh",
+      "schedule": {"weekdays": [0, 1, 2, 3, 4], "hour_utc": 17, "minute_utc": 0},
+      "requires": []
+    },
+    {
       "id": "after-close-outcomes-report",
       "purpose": "After-close due outcome progression and daily result report",
       "command": "python -m lmio.cli scheduled-job --job-id after-close-outcomes-report",

@@ -19,6 +19,20 @@ volume/OI at least 1.25, option price above USD 0.10, spread at most 20%, and
 
 ## Data routes
 
+### Cboe most-active equity options (free, no login)
+
+LMIO reads Cboe's official public most-active endpoint server-side. It stores a
+bounded list of the leading equity-option Call and Put contracts, then groups
+only those visible leaderboard rows by underlying ticker. The feed is delayed
+by at least 20 minutes and covers the Cboe Options Exchange, not consolidated
+US options volume.
+
+This route does **not** provide bid, ask or open interest, so it does not enter
+the unusual-contract classifier. It is a high-volume discovery list only. An
+empty after-hours response never overwrites the last non-empty verified
+snapshot. The dashboard's full Refresh action and the weekday scheduled job
+both check this source without a subscription, credential or account login.
+
 ### IBKR paper TWS
 
 `scripts/ibkr_bridge.py` uses the existing loopback-only paper TWS API. Basic
@@ -39,9 +53,9 @@ row reaches every research gate. Barchart credentials are never requested.
 
 ## Telegram
 
-Send `/options` for the latest confirmed candidates or `/options SPY` for one
-symbol. Telegram messages say “non-trading signal” and never contain buy, sell,
-position-size or order instructions.
+Send `/options` for the latest confirmed candidates and Cboe high-volume
+tickers, or `/options SPY` for one symbol. Telegram messages say “non-trading
+signal” and never contain buy, sell, position-size or order instructions.
 
 ## Interpretation limits
 
@@ -49,3 +63,5 @@ Unusual volume cannot prove whether activity opened or closed a position,
 whether it came from an institution, or whether it is directional. Confirm with
 the next session's open interest, the underlying price, company events and
 liquidity. LMIO intentionally does not label this activity as a recommendation.
+Likewise, appearing on Cboe's most-active leaderboard does not prove unusual
+activity, direction or institutional intent.

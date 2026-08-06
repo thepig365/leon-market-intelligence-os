@@ -47,8 +47,9 @@ evidence references. It does not create a duplicate project-memory system.
 - health, readiness and provider status;
 - responsive read-only FastAPI fallback command centre;
 - Chinese-first Next.js/TypeScript dashboard with all 13 required sections;
-- research-only Options Trading board with conservative unusual-volume gates,
-  two-scan Telegram confirmation and manual Barchart CSV upload;
+- research-only Options Trading board with a free, no-login Cboe high-volume
+  ticker list, conservative unusual-volume gates, two-scan Telegram
+  confirmation and manual Barchart CSV upload;
 - protected mutating HTTP endpoints;
 - structured audit logging with secret redaction;
 - optional evidence-only OpenAI Responses API adapter, disabled by default;

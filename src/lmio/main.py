@@ -216,6 +216,15 @@ async def telegram_webhook(request: Request) -> dict[str, str]:
         board = _options_board_payload(symbol)
         candidates = list(board.get("candidates") or [])[:5]
         provider = dict(board.get("provider") or {})
+        high_volume = dict(board.get("high_volume") or {})
+        active_tickers = list(high_volume.get("tickers") or [])[:5]
+        active_lines = [
+            (
+                f"- {dict(item).get('symbol')} · Cboe 榜单量 "
+                f"{dict(item).get('leaderboard_volume')}"
+            )
+            for item in active_tickers
+        ]
         if not candidates:
             response = "\n".join(
                 (
@@ -223,6 +232,8 @@ async def telegram_webhook(request: Request) -> dict[str, str]:
                     f"资料状态：{provider.get('state', 'not_verified')}",
                     f"最近观察：{provider.get('last_observed_at') or '尚无'}",
                     "当前没有经过两次确认的异常期权候选。",
+                    "Cboe 高成交量标的（至少延迟 20 分钟）：",
+                    *(active_lines or ["- 当前时段没有可验证榜单；保留最后一批有数据的记录。"]),
                     "LMIO 不会因此执行任何订单。",
                 )
             )
@@ -240,6 +251,8 @@ async def telegram_webhook(request: Request) -> dict[str, str]:
                 (
                     "LMIO · Options Trading（非交易信号）",
                     *lines,
+                    "Cboe 高成交量标的（至少延迟 20 分钟）：",
+                    *(active_lines or ["- 当前无可验证榜单。"]),
                     "必须核对新闻、标的走势及次日 OI；LMIO 不会下单。",
                 )
             )
@@ -687,6 +700,7 @@ def operator_full_refresh(
 
     refreshes = (
         ("finviz_market_strategy_and_report", service.refresh_finviz),
+        ("cboe_high_volume_options", service.refresh_cboe_options),
         ("official_macro_sec_and_ai_news", service.refresh_official_news),
         ("due_outcomes", service.process_due_outcomes),
         ("strategy_performance", service.aggregate_strategy_performance),
@@ -1552,6 +1566,36 @@ def _options_board_payload(symbol: str | None = None) -> dict[str, object]:
             stale = datetime.now(UTC) - parsed.astimezone(UTC) > timedelta(minutes=20)
         except ValueError:
             stale = True
+
+    cboe_events = [
+        item
+        for item in service.store.history_json("provider_health", 200)
+        if item.get("provider") == "cboe_options_most_active"
+    ]
+    latest_cboe_check = cboe_events[0] if cboe_events else None
+    latest_cboe_snapshot = next(
+        (
+            item
+            for item in cboe_events
+            if item.get("state") == "ready"
+            and int(dict(item.get("payload") or {}).get("total_contracts") or 0) > 0
+        ),
+        None,
+    )
+    cboe_payload = dict((latest_cboe_snapshot or {}).get("payload") or {})
+    high_volume_tickers = list(cboe_payload.get("high_volume_tickers") or [])
+    if symbol:
+        high_volume_tickers = [
+            item for item in high_volume_tickers if str(dict(item).get("symbol")) == symbol.upper()
+        ]
+    cboe_contracts = [
+        *list(cboe_payload.get("calls") or []),
+        *list(cboe_payload.get("puts") or []),
+    ]
+    if symbol:
+        cboe_contracts = [
+            item for item in cboe_contracts if str(dict(item).get("symbol")) == symbol.upper()
+        ]
     return {
         "title": "Options Trading / 期权研究",
         "purpose": "异常期权成交研究与提醒；不是买卖信号，不具备订单执行能力。",
@@ -1582,8 +1626,29 @@ def _options_board_payload(symbol: str | None = None) -> dict[str, object]:
         },
         "candidates": candidates,
         "candidate_count": len(candidates),
+        "high_volume": {
+            "provider": "Cboe Options Exchange",
+            "state": (latest_cboe_check or {}).get("state", "not_verified"),
+            "last_checked_at": (latest_cboe_check or {}).get("created_at"),
+            "market_timestamp": cboe_payload.get("market_timestamp"),
+            "data_mode": cboe_payload.get("data_mode", "delayed_at_least_20_minutes"),
+            "exchange_scope": cboe_payload.get(
+                "exchange_scope",
+                "Cboe Options Exchange only; not consolidated US options volume",
+            ),
+            "source_url": cboe_payload.get("source_url"),
+            "tickers": high_volume_tickers[:25],
+            "contracts": sorted(
+                cboe_contracts,
+                key=lambda item: int(dict(item).get("volume") or 0),
+                reverse=True,
+            )[:20],
+            "last_non_empty_snapshot_available": latest_cboe_snapshot is not None,
+        },
         "limitations": [
             "免费或未订阅行情可能延迟，页面必须同时查看数据时间。",
+            "Cboe 高成交量榜至少延迟 20 分钟，只覆盖 Cboe 交易所且不是全美期权汇总。",
+            "Cboe 榜单量只表示其榜单合约的成交量，不能单独证明异常活动或方向。",
             "成交量与未平仓量不能证明开仓、平仓或机构意图。",
             "方向标签只是报价位置推断，必须结合次日 OI、新闻及标的走势确认。",
             "Barchart 仅作人工 CSV 或原生邮件核对；LMIO 不抓取其网页。",
