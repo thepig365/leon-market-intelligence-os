@@ -9,6 +9,10 @@
       "schedule": "45 15 * * 1-5"
     },
     {
+      "path": "/api/v1/scheduler/cboe-options-volume-refresh",
+      "schedule": "0 17 * * 1-5"
+    },
+    {
       "path": "/api/v1/scheduler/after-close-outcomes-report",
       "schedule": "30 21 * * 1-5"
     },

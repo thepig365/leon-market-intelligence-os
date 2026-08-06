@@ -90,6 +90,29 @@ def test_after_open_job_truthfully_runs_only_authorised_finviz_refresh(
     assert calls == [MessageKind.AFTER_OPEN]
 
 
+def test_cboe_options_job_refreshes_research_only_leaderboard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
+    calls: list[str] = []
+
+    def fake_refresh(_service: LMIOService) -> dict[str, object]:
+        calls.append("cboe")
+        return {"status": "completed", "execution_allowed": False}
+
+    monkeypatch.setattr(LMIOService, "refresh_cboe_options", fake_refresh)
+    result = run_scheduled_job(
+        service,
+        "cboe-options-volume-refresh",
+        now=datetime(2026, 8, 3, 17, 30, tzinfo=UTC),
+    )
+
+    assert result["status"] == "succeeded"
+    assert result["result"]["execution_allowed"] is False
+    assert calls == ["cboe"]
+
+
 def test_after_close_job_stores_report_and_queues_delivery(tmp_path: Path) -> None:
     service = LMIOService(Settings(_env_file=None, database_path=tmp_path / "runtime.sqlite3"))
 

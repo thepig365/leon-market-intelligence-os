@@ -233,6 +233,74 @@ def test_owner_can_import_manual_barchart_csv_without_vendor_credentials(
     assert "password" not in response.text.lower()
 
 
+def test_options_board_separates_cboe_volume_leaderboard_from_unusual_candidates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "runtime.sqlite3",
+        environment="production",
+        read_api_key="read-test-key",
+    )
+    service = LMIOService(settings)
+    service.store.append_json(
+        "provider_health",
+        {
+            "provider": "cboe_options_most_active",
+            "state": "ready",
+            "payload": {
+                "market_timestamp": "2026-08-06T19:30:00+00:00",
+                "data_mode": "delayed_at_least_20_minutes",
+                "exchange_scope": "Cboe Options Exchange only",
+                "source_url": "https://www.cboe.com/markets/us/options/market-statistics/most-active/",
+                "total_contracts": 2,
+                "high_volume_tickers": [
+                    {
+                        "symbol": "NVDA",
+                        "leaderboard_volume": 200000,
+                        "call_volume": 120000,
+                        "put_volume": 80000,
+                        "contract_count": 2,
+                    }
+                ],
+                "calls": [
+                    {
+                        "symbol": "NVDA",
+                        "expiry": "2026-08-21",
+                        "strike": 200,
+                        "right": "call",
+                        "volume": 120000,
+                    }
+                ],
+                "puts": [
+                    {
+                        "symbol": "NVDA",
+                        "expiry": "2026-08-21",
+                        "strike": 180,
+                        "right": "put",
+                        "volume": 80000,
+                    }
+                ],
+            },
+        },
+    )
+    monkeypatch.setattr("lmio.main.get_service", lambda: service)
+
+    response = request(
+        "GET",
+        "/api/v1/options/board",
+        headers={"x-lmio-read-key": "read-test-key"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["candidate_count"] == 0
+    assert body["high_volume"]["tickers"][0]["symbol"] == "NVDA"
+    assert body["high_volume"]["contracts"][0]["volume"] == 120000
+    assert body["safety"]["can_trade"] is False
+
+
 def test_operational_lineage_api_is_protected_and_redacts_provider_rows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -417,6 +485,10 @@ def test_full_refresh_is_bounded_to_authenticated_dashboard_operator(
             "sec": {"status": "partial"},
         }
 
+    def cboe_refresh() -> dict[str, object]:
+        calls.append("cboe")
+        return {"status": "completed"}
+
     def outcomes_refresh() -> dict[str, object]:
         calls.append("outcomes")
         return {"status": "completed"}
@@ -426,6 +498,7 @@ def test_full_refresh_is_bounded_to_authenticated_dashboard_operator(
         return {"status": "completed"}
 
     monkeypatch.setattr(service, "refresh_finviz", finviz_refresh)
+    monkeypatch.setattr(service, "refresh_cboe_options", cboe_refresh)
     monkeypatch.setattr(service, "refresh_official_news", news_refresh)
     monkeypatch.setattr(service, "process_due_outcomes", outcomes_refresh)
     monkeypatch.setattr(service, "aggregate_strategy_performance", performance_refresh)
@@ -468,7 +541,7 @@ def test_full_refresh_is_bounded_to_authenticated_dashboard_operator(
     assert response.json()["payment_action"] is False
     assert response.json()["unavailable_components"] == []
     assert response.json()["partial_components"] == ["official_macro_sec_and_ai_news"]
-    assert calls == ["finviz", "news", "outcomes", "performance"]
+    assert calls == ["finviz", "cboe", "news", "outcomes", "performance"]
 
 
 def test_synthetic_replay_is_disabled_even_for_admin_by_default(

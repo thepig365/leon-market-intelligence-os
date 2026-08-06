@@ -137,6 +137,8 @@ def _execute(service: LMIOService, job_id: str) -> dict[str, object]:
         return service.run_operational_pipeline()
     if job_id == "after-open-finviz-refresh":
         return service.refresh_finviz(message_kind=MessageKind.AFTER_OPEN)
+    if job_id == "cboe-options-volume-refresh":
+        return service.refresh_cboe_options()
     if job_id == "after-close-outcomes-report":
         outcomes = service.process_due_outcomes()
         performance = service.aggregate_strategy_performance()

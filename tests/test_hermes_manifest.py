@@ -12,6 +12,7 @@ def test_scheduler_manifest_maps_every_required_purpose_to_safe_code() -> None:
     assert {job["id"] for job in manifest["jobs"]} == {
         "premarket-data-screening",
         "after-open-finviz-refresh",
+        "cboe-options-volume-refresh",
         "after-close-outcomes-report",
         "official-news-refresh",
         "sec-refresh",

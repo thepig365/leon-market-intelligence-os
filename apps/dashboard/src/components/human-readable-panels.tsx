@@ -754,8 +754,12 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
   const provider = record(board.provider);
   const thresholds = record(board.thresholds);
   const coverage = record(provider.field_coverage);
+  const highVolume = record(board.high_volume);
   const safety = record(board.safety);
   const candidates = list(board.candidates).map(record);
+  const highVolumeTickers = list(highVolume.tickers).map(record);
+  const highVolumeContracts = list(highVolume.contracts).map(record);
+  const highVolumeState = text(highVolume.state, "not_verified");
   const limitations = list(board.limitations).map((item) => text(item));
   const providerReady = text(provider.state, "not_verified") === "ready";
   const stale = provider.stale !== false;
@@ -793,6 +797,82 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
         <div><span>当前候选</span><strong>{number(board.candidate_count)}</strong></div>
         <div><span>交易能力</span><strong>{tradingLocked ? "关闭" : "异常"}</strong></div>
       </div>
+
+      <div className="sectionHeading">
+        <div><p className="eyebrow">CBOE MOST ACTIVE</p><h2>高成交量期权标的</h2></div>
+        <p>官方免费榜单，至少延迟 20 分钟；只统计榜单内合约，不代表全市场总量。</p>
+      </div>
+      <div className="optionsStatusGrid">
+        <article className="plainCard">
+          <p className="eyebrow">FREE SOURCE STATUS</p>
+          <h2>{text(highVolume.provider, "Cboe Options Exchange")}</h2>
+          <dl className="factList">
+            <div>
+              <dt>当前状态</dt>
+              <dd>
+                {highVolumeState === "ready"
+                  ? "交易时段榜单已取得"
+                  : highVolumeState === "no_current_session_data"
+                    ? "当前无交易时段数据，显示最后记录"
+                    : highVolumeState === "unavailable"
+                      ? "本次检查失败，显示最后记录"
+                      : "尚未完成首次检查"}
+              </dd>
+            </div>
+            <div><dt>最近检查</dt><dd>{date(highVolume.last_checked_at)}</dd></div>
+            <div><dt>榜单资料时间</dt><dd>{date(highVolume.market_timestamp)}</dd></div>
+            <div><dt>资料模式</dt><dd>至少延迟 20 分钟</dd></div>
+            <div><dt>覆盖范围</dt><dd>Cboe 交易所股票期权</dd></div>
+            <div><dt>收盘后</dt><dd>保留最后一批有数据记录</dd></div>
+          </dl>
+        </article>
+        <article className="plainCard">
+          <p className="eyebrow">HOW TO USE</p>
+          <h2>先找活跃标的，再做合约核查</h2>
+          <p>
+            这张榜单用于发现成交活跃的股票代码。进入研究前仍需核对未平仓量、价差、
+            到期日、新闻与标的走势，不能只凭成交量判断 Call 或 Put 方向。
+          </p>
+          <p className="safetyLine">不会触发模拟或实盘订单，也不会产生订阅费用。</p>
+        </article>
+      </div>
+      {highVolumeTickers.length ? (
+        <div className="optionsGrid">
+          {highVolumeTickers.map((ticker) => (
+            <article className="recordCard optionCard" key={text(ticker.symbol)}>
+              <div className="recordCardTop">
+                <div>
+                  <p className="eyebrow">HIGH-VOLUME UNDERLYING</p>
+                  <h2>{text(ticker.symbol, "—")}</h2>
+                </div>
+                <span className="status status-ready">Cboe 榜单</span>
+              </div>
+              <dl className="factGrid">
+                <div><dt>榜单合约量合计</dt><dd>{number(ticker.leaderboard_volume)}</dd></div>
+                <div><dt>Call 榜单量</dt><dd>{number(ticker.call_volume)}</dd></div>
+                <div><dt>Put 榜单量</dt><dd>{number(ticker.put_volume)}</dd></div>
+                <div><dt>进入榜单合约数</dt><dd>{number(ticker.contract_count)}</dd></div>
+              </dl>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <EmptyPanel message="当前检查没有返回交易时段榜单；系统不会生成假标的，且会继续保留最后一批有数据记录。" />
+      )}
+      {highVolumeContracts.length ? (
+        <section className="plainCard optionsLimitations">
+          <p className="eyebrow">LEADING CONTRACTS</p>
+          <h2>榜单领先合约</h2>
+          <ul className="commandList">
+            {highVolumeContracts.slice(0, 10).map((contract, index) => (
+              <li key={`${text(contract.symbol)}-${text(contract.expiry)}-${number(contract.strike)}-${index}`}>
+                {text(contract.symbol)} · {text(contract.right).toUpperCase()} · {text(contract.expiry)} ·
+                ${number(contract.strike, 2)} · 成交量 {number(contract.volume)}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <div className="optionsStatusGrid">
         <article className="plainCard">
