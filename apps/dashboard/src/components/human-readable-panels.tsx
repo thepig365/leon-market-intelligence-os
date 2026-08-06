@@ -746,6 +746,137 @@ function SettingsPanel({ result }: { result: LMIOResult }) {
   );
 }
 
+function OptionsPanel({ result }: { result: LMIOResult }) {
+  if (result.state !== "ready") {
+    return <StatePanel result={result} title="期权研究暂时无法取得数据" />;
+  }
+  const board = record(result.data);
+  const provider = record(board.provider);
+  const thresholds = record(board.thresholds);
+  const coverage = record(provider.field_coverage);
+  const safety = record(board.safety);
+  const candidates = list(board.candidates).map(record);
+  const limitations = list(board.limitations).map((item) => text(item));
+  const providerReady = text(provider.state, "not_verified") === "ready";
+  const stale = provider.stale !== false;
+  const tradingLocked =
+    safety.can_trade === false &&
+    safety.paper_orders === false &&
+    safety.live_orders === false &&
+    safety.order_endpoint === false;
+
+  return (
+    <section className="researchView">
+      <div className="researchNotice optionsNotice">
+        <div>
+          <p className="eyebrow">UNUSUAL VOLUME RESEARCH</p>
+          <h2>异常期权活动候选</h2>
+          <p>
+            先检查成交量、未平仓量、价差和期限，再连续确认两次才发送 Telegram。
+            这里不会显示“买入”或“卖出”。
+          </p>
+        </div>
+        <span className={`status ${providerReady && !stale ? "status-ready" : "status-empty"}`}>
+          {providerReady
+            ? (stale
+              ? "数据已过期"
+              : text(provider.name).includes("Barchart")
+                ? "人工 CSV 已导入"
+                : "延迟数据已连接")
+            : "等待期权资料"}
+        </span>
+      </div>
+
+      <div className="commandMetrics optionsMetrics">
+        <div><span>本批读取合约</span><strong>{number(provider.records_received_last_batch)}</strong></div>
+        <div><span>本批达到门槛</span><strong>{number(provider.qualified_last_batch)}</strong></div>
+        <div><span>当前候选</span><strong>{number(board.candidate_count)}</strong></div>
+        <div><span>交易能力</span><strong>{tradingLocked ? "关闭" : "异常"}</strong></div>
+      </div>
+
+      <div className="optionsStatusGrid">
+        <article className="plainCard">
+          <p className="eyebrow">DATA STATUS</p>
+          <h2>{text(provider.name, "期权资料来源")}</h2>
+          <dl className="factList">
+            <div><dt>数据模式</dt><dd>{text(provider.data_mode, "delayed")}</dd></div>
+            <div><dt>最近观察</dt><dd>{date(provider.last_observed_at)}</dd></div>
+            <div><dt>股票范围</dt><dd>{list(provider.symbols).map((item) => text(item)).join(" · ") || "等待数据"}</dd></div>
+            <div><dt>成交量覆盖</dt><dd>{number(coverage.volume)} / {number(provider.records_received_last_batch)}</dd></div>
+            <div><dt>未平仓量覆盖</dt><dd>{number(coverage.open_interest)} / {number(provider.records_received_last_batch)}</dd></div>
+            <div><dt>执行订单</dt><dd>{tradingLocked ? "不允许" : "安全配置异常"}</dd></div>
+          </dl>
+        </article>
+        <article className="plainCard">
+          <p className="eyebrow">ALERT RULES</p>
+          <h2>预警门槛</h2>
+          <dl className="factList">
+            <div><dt>最低成交量</dt><dd>{number(thresholds.minimum_volume)}</dd></div>
+            <div><dt>最低未平仓量</dt><dd>{number(thresholds.minimum_open_interest)}</dd></div>
+            <div><dt>最低 Volume/OI</dt><dd>{number(thresholds.minimum_volume_oi_ratio, 2)}</dd></div>
+            <div><dt>到期期限</dt><dd>{text(thresholds.days_to_expiry)}</dd></div>
+            <div><dt>最大买卖价差</dt><dd>{number(thresholds.maximum_bid_ask_spread_pct)}%</dd></div>
+            <div><dt>Telegram</dt><dd>{text(thresholds.telegram_confirmation)}</dd></div>
+          </dl>
+        </article>
+      </div>
+
+      <div className="sectionHeading">
+        <div><p className="eyebrow">CURRENT CANDIDATES</p><h2>已保存的研究候选</h2></div>
+        <p>优先显示连续两次确认及 Volume/OI 较高的合约。</p>
+      </div>
+      {candidates.length ? (
+        <div className="optionsGrid">
+          {candidates.map((candidate, index) => {
+            const analysis = record(candidate.analysis);
+            const confirmed = candidate.confirmation_state === "confirmed_twice";
+            return (
+              <article className="recordCard optionCard" key={`${text(analysis.contract_key)}-${index}`}>
+                <div className="recordCardTop">
+                  <div>
+                    <p className="eyebrow">{text(candidate.right).toUpperCase()} · {text(candidate.expiry)}</p>
+                    <h2>{text(candidate.symbol, "—")} · ${number(candidate.strike, 2)}</h2>
+                  </div>
+                  <span className={`status ${confirmed ? "status-ready" : "status-empty"}`}>
+                    {confirmed ? "连续确认" : "首次发现"}
+                  </span>
+                </div>
+                <dl className="factGrid">
+                  <div><dt>成交量</dt><dd>{number(candidate.volume)}</dd></div>
+                  <div><dt>未平仓量</dt><dd>{number(candidate.open_interest)}</dd></div>
+                  <div><dt>Volume/OI</dt><dd>{number(analysis.volume_oi_ratio, 2)}</dd></div>
+                  <div><dt>买卖价差</dt><dd>{number(analysis.spread_pct, 2)}%</dd></div>
+                  <div><dt>Bid / Ask</dt><dd>${number(candidate.bid, 2)} / ${number(candidate.ask, 2)}</dd></div>
+                  <div><dt>估算成交权利金</dt><dd>${number(analysis.approximate_premium_usd)}</dd></div>
+                  <div><dt>剩余天数</dt><dd>{number(analysis.dte)}</dd></div>
+                  <div><dt>报价方向提示</dt><dd>{text(analysis.indicative_sentiment)}</dd></div>
+                </dl>
+                <p className="message">{text(analysis.research_warning)}</p>
+                <p className="pageFootnote">
+                  {text(candidate.source)} · {text(candidate.data_mode)} · 资料时间 {date(candidate.observed_at)}
+                </p>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <EmptyPanel message="尚无合约同时达到全部门槛。系统不会用示例或过期资料填充页面。" />
+      )}
+
+      <section className="plainCard optionsLimitations">
+        <p className="eyebrow">READ BEFORE USE</p>
+        <h2>如何正确理解这些提醒</h2>
+        <ul className="commandList warningList">
+          {limitations.map((item) => <li key={item}>{item}</li>)}
+        </ul>
+        <p className="safetyLine">
+          Barchart 只用于人工 CSV 或原生邮件交叉核对；LMIO 不会抓取或复制其网页数据。
+        </p>
+      </section>
+    </section>
+  );
+}
+
 function DeferredPanel({ section }: { section: DashboardSection }) {
   return (
     <section className="panel">
@@ -777,6 +908,7 @@ export function HumanReadablePanel({
     case "news-trading": return <NewsPanel result={result} />;
     case "institutional-insider": return <OwnershipPanel result={result} />;
     case "intrinsic-value": return <ValuationPanel result={result} />;
+    case "unusual-options": return <OptionsPanel result={result} />;
     case "watchlists": return <WatchlistPanel result={result} />;
     case "conditional-plans": return <PlansPanel result={result} />;
     case "reports-journal": return <ReportsPanel result={result} />;

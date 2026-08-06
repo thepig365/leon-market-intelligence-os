@@ -47,6 +47,8 @@ evidence references. It does not create a duplicate project-memory system.
 - health, readiness and provider status;
 - responsive read-only FastAPI fallback command centre;
 - Chinese-first Next.js/TypeScript dashboard with all 13 required sections;
+- research-only Options Trading board with conservative unusual-volume gates,
+  two-scan Telegram confirmation and manual Barchart CSV upload;
 - protected mutating HTTP endpoints;
 - structured audit logging with secret redaction;
 - optional evidence-only OpenAI Responses API adapter, disabled by default;
@@ -147,7 +149,9 @@ expose a remote mutation surface.
   evidence-only research synthesis; both are blank and inactive by default;
 - `LMIO_ADMIN_API_KEY`: protects mutating HTTP endpoints.
 - `LMIO_IBKR_BRIDGE_KEY`: authenticates the minimal outbound-only local paper
-  TWS status heartbeat; see [`docs/IBKR_PAPER_BRIDGE.md`](docs/IBKR_PAPER_BRIDGE.md).
+  TWS status and bounded option-research bridge; see
+  [`docs/IBKR_PAPER_BRIDGE.md`](docs/IBKR_PAPER_BRIDGE.md) and
+  [`docs/OPTIONS_TRADING.md`](docs/OPTIONS_TRADING.md).
 - `LMIO_READ_API_KEY`: protects runtime reads outside the minimal health probe;
 - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: enable the isolated
   production store when `LMIO_STORE_BACKEND=supabase`.

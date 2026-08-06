@@ -43,6 +43,7 @@ RECORD_KINDS = {
     "valuation_input_records",
     "operational_lineage",
     "market_regimes",
+    "options_flow",
 }
 
 LATEST_KINDS = {"universe_runs", "screen_runs", "reports"}
@@ -78,6 +79,7 @@ COUNT_KINDS = (
     "valuation_input_records",
     "operational_lineage",
     "market_regimes",
+    "options_flow",
 )
 
 

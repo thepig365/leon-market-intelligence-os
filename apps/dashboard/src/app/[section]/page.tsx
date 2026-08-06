@@ -1,5 +1,7 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { HumanReadablePanel } from "@/components/human-readable-panels";
+import { OptionsImportControl } from "@/components/options-import-control";
 import { dashboardSections, sectionBySlug } from "@/lib/navigation";
 import { readLMIO } from "@/lib/lmio";
 
@@ -32,6 +34,11 @@ export default async function DashboardPage({
         ) : null}
       </section>
       <HumanReadablePanel section={section} result={result} />
+      {slug === "unusual-options" ? (
+        <Suspense fallback={null}>
+          <OptionsImportControl />
+        </Suspense>
+      ) : null}
     </>
   );
 }
