@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import threading
 import time
 from datetime import UTC, datetime
@@ -41,6 +42,29 @@ class PaperTWSProbe(EWrapper, EClient):
 
 def truthy(value: str | None) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes"}
+
+
+def load_bridge_key() -> str:
+    """Read the bridge key from the environment or Leon's macOS Keychain."""
+
+    supplied = os.getenv("LMIO_IBKR_BRIDGE_KEY", "").strip()
+    if supplied:
+        return supplied
+    result = subprocess.run(
+        [
+            "security",
+            "find-generic-password",
+            "-a",
+            "lmio-local-bridge",
+            "-s",
+            "LMIO_IBKR_BRIDGE_KEY",
+            "-w",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
 
 
 def collect_heartbeat(host: str, port: int, client_id: int) -> dict[str, object]:
@@ -91,7 +115,7 @@ def main() -> int:
     if args.host not in {"127.0.0.1", "localhost"}:
         raise SystemExit("Refusing non-local TWS host")
     runtime_url = os.getenv("LMIO_RUNTIME_URL", "").strip()
-    key = os.getenv("LMIO_IBKR_BRIDGE_KEY", "").strip()
+    key = load_bridge_key()
     if not runtime_url or not key:
         raise SystemExit("LMIO_RUNTIME_URL and LMIO_IBKR_BRIDGE_KEY are required")
     while True:

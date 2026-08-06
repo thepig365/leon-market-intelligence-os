@@ -26,6 +26,10 @@ install an unofficial PyPI copy. In paper TWS, enable socket clients on port
 Keep `LMIO_IBKR_BRIDGE_KEY` in the runtime's protected environment and the
 local macOS Keychain or a private local environment. Never commit it.
 
+The local bridge automatically reads the Keychain item whose service is
+`LMIO_IBKR_BRIDGE_KEY` and account is `lmio-local-bridge` when the environment
+variable is absent.
+
 ## Run one verification heartbeat
 
 ```bash
