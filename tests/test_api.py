@@ -301,6 +301,60 @@ def test_options_board_separates_cboe_volume_leaderboard_from_unusual_candidates
     assert body["safety"]["can_trade"] is False
 
 
+def test_options_screenshot_analysis_requires_operator_and_never_returns_image(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "runtime.sqlite3",
+        environment="production",
+        read_api_key="read-test-key",
+    )
+    service = LMIOService(settings)
+    monkeypatch.setattr("lmio.security.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.main.get_service", lambda: service)
+    monkeypatch.setattr(
+        service,
+        "analyse_options_screenshot",
+        lambda image_data_url, **kwargs: {
+            "status": "ready",
+            "analysed_at": "2026-08-07T00:00:00+00:00",
+            "image_retained": False,
+            "order_created": False,
+            "execution_allowed": False,
+        },
+    )
+    image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="
+
+    reviewer = request(
+        "POST",
+        "/api/v1/options/screenshot-analysis",
+        headers={
+            "x-lmio-read-key": "read-test-key",
+            "x-lmio-actor-id": "reviewer-id",
+            "x-lmio-actor-role": "reviewer",
+        },
+        json={"image_data_url": image},
+    )
+    assert reviewer.status_code == 403
+
+    owner = request(
+        "POST",
+        "/api/v1/options/screenshot-analysis",
+        headers={
+            "x-lmio-read-key": "read-test-key",
+            "x-lmio-actor-id": "owner-id",
+            "x-lmio-actor-role": "owner",
+        },
+        json={"image_data_url": image},
+    )
+    assert owner.status_code == 200
+    assert owner.json()["image_retained"] is False
+    assert "image_data_url" not in owner.text
+    assert owner.json()["order_created"] is False
+
+
 def test_operational_lineage_api_is_protected_and_redacts_provider_rows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

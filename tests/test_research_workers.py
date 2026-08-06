@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from lmio.providers import (
     OpenAINewsWorker,
+    OpenAIOptionsScreenshotWorker,
     OpenAIResearchWorker,
     ProviderState,
     build_kimi_manual_packet,
@@ -108,6 +109,71 @@ def test_openai_news_worker_uses_no_tools_and_reports_usage() -> None:
     assert "source_url" not in body["input"]
     assert result["usage"] == {"input_tokens": 120, "output_tokens": 80}
     assert result["order_created"] is False
+
+
+def test_openai_options_screenshot_worker_is_tool_free_and_does_not_store_image() -> None:
+    captured: dict[str, object] = {}
+
+    def transport(request: Request, timeout: float) -> dict[str, object]:
+        captured["body"] = json.loads(request.data or b"{}")
+        return {
+            "output_text": json.dumps(
+                {
+                    "plain_language_summary": "截图显示 AAPL Call 成交兴趣，但不能证明开仓。",
+                    "alerts": [
+                        {
+                            "symbol": "AAPL",
+                            "expiry": "2026-08-10",
+                            "strike": 317.5,
+                            "right": "call",
+                            "contracts": 6964,
+                            "bought_price": 1.5,
+                            "open_interest": 3474,
+                            "total_premium_usd": 1044182,
+                            "volume_oi_ratio": 2.0,
+                            "extraction_confidence": 0.98,
+                        }
+                    ],
+                    "notable_patterns": ["Call 成交量高于现有 OI。"],
+                    "bullish_clues": ["Call 买入兴趣。"],
+                    "bearish_clues": [],
+                    "what_this_does_not_prove": ["不能证明为新开多仓。"],
+                    "confirmation_checks": ["核对次日 OI 与标的走势。"],
+                    "ticker_assessments": [
+                        {
+                            "symbol": "AAPL",
+                            "flow_bias": "bullish_interest",
+                            "why_notable": "Call 成交量较高。",
+                            "confirmation_needed": "核对成交方向与次日 OI。",
+                            "invalidation_or_risk": "可能是平仓或组合对冲。",
+                            "research_stance": "wait_for_confirmation",
+                        }
+                    ],
+                    "overall_confidence": 0.8,
+                }
+            ),
+            "usage": {"input_tokens": 900, "output_tokens": 300},
+        }
+
+    worker = OpenAIOptionsScreenshotWorker(
+        api_key="server-secret",
+        model="gpt-5.6-luna",
+        transport=transport,
+    )
+    result = worker.analyse("data:image/png;base64,iVBORw0KGgo=")
+
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert body["store"] is False
+    assert body["reasoning"] == {"effort": "low"}
+    assert "tools" not in body
+    image = body["input"][0]["content"][1]
+    assert image["type"] == "input_image"
+    assert image["detail"] == "high"
+    assert image["image_url"].startswith("data:image/png;base64,")
+    assert result["order_created"] is False
+    assert result["execution_allowed"] is False
+    assert result["usage"] == {"input_tokens": 900, "output_tokens": 300}
 
 
 def test_manual_kimi_packet_and_output_are_evidence_bounded() -> None:

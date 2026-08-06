@@ -27,7 +27,7 @@ from lmio.providers.base import ProviderState
 from lmio.providers.cboe_options import CboeMostActiveProvider, snapshot_payload
 from lmio.providers.finviz_api import FinvizAPIProvider
 from lmio.providers.official_rss import OfficialRSSProvider
-from lmio.providers.research import OpenAINewsWorker
+from lmio.providers.research import OpenAINewsWorker, OpenAIOptionsScreenshotWorker
 from lmio.providers.sec import SECProvider
 from lmio.ranking import RankedCandidate, rank_top10
 from lmio.reports import build_daily_report, classify_regime, unverified_regime
@@ -1458,6 +1458,83 @@ class LMIOService:
             "failed": failed,
             "spent_usd": round(used, 6),
             "monthly_cap_usd": cap,
+        }
+
+    def analyse_options_screenshot(
+        self,
+        image_data_url: str,
+        *,
+        mime_type: str,
+        image_bytes: int,
+        actor_role: str,
+    ) -> dict[str, object]:
+        """Analyse one transient screenshot under the shared hard application cap."""
+
+        api_key = self.settings.openai_api_key.get_secret_value().strip()
+        if not api_key:
+            raise RuntimeError("OpenAI screenshot analysis is not configured.")
+        now = datetime.now(UTC)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        next_month = (
+            month_start.replace(year=month_start.year + 1, month=1)
+            if month_start.month == 12
+            else month_start.replace(month=month_start.month + 1)
+        )
+        used = self.store.ai_usage_total(month_start.isoformat(), next_month.isoformat())
+        cap = self.settings.openai_monthly_cap_usd
+        # Charge a conservative fixed reserve to LMIO's application ledger before
+        # sending the image. This makes failures and concurrency fail toward the cap,
+        # never toward unbounded use. It is not represented as an OpenAI invoice.
+        reserve = 0.05
+        if used + reserve > cap:
+            raise RuntimeError("Monthly AI analysis cap reached.")
+        self.store.append_json(
+            "ai_usage",
+            {
+                "model": self.settings.openai_model,
+                "cost_usd": reserve,
+                "payload": {
+                    "cost_usd": reserve,
+                    "purpose": "options_screenshot_analysis_reservation",
+                    "accounting": "conservative_application_reserve_not_provider_invoice",
+                },
+            },
+        )
+        worker = OpenAIOptionsScreenshotWorker(
+            api_key=api_key,
+            model=self.settings.openai_model,
+        )
+        result = worker.analyse(image_data_url)
+        usage = dict(result.pop("usage"))
+        record = {
+            "source": worker.name,
+            "observed_at": now.isoformat(),
+            "schema_version": "options-screenshot-analysis-v1",
+            "payload": {
+                "record_type": "options_screenshot_analysis",
+                "analysis": result,
+                "actor_role": actor_role,
+                "input": {
+                    "mime_type": mime_type,
+                    "image_bytes": image_bytes,
+                    "image_retained": False,
+                    "conversation_retained": False,
+                },
+                "usage": usage,
+                "monthly_cap_usd": cap,
+                "application_reserve_usd": reserve,
+            },
+        }
+        self.store.append_json("options_flow", record)
+        return {
+            "status": "ready",
+            "analysed_at": now.isoformat(),
+            "analysis": result,
+            "image_retained": False,
+            "order_created": False,
+            "execution_allowed": False,
+            "monthly_cap_usd": cap,
+            "application_reserve_usd": reserve,
         }
 
     def latest_news(self, limit: int = 100) -> list[dict[str, object]]:

@@ -49,7 +49,7 @@ evidence references. It does not create a duplicate project-memory system.
 - Chinese-first Next.js/TypeScript dashboard with all 13 required sections;
 - research-only Options Trading board with a free, no-login Cboe high-volume
   ticker list, conservative unusual-volume gates, two-scan Telegram
-  confirmation and manual Barchart CSV upload;
+  confirmation, manual Barchart CSV upload and private AI screenshot analysis;
 - protected mutating HTTP endpoints;
 - structured audit logging with secret redaction;
 - optional evidence-only OpenAI Responses API adapter, disabled by default;
@@ -147,7 +147,9 @@ expose a remote mutation surface.
   only;
 - `CRON_SECRET`: protects the scheduled Finviz refresh;
 - `OPENAI_API_KEY` and `LMIO_OPENAI_MODEL`: optional server-side,
-  evidence-only research synthesis; both are blank and inactive by default;
+  evidence-only research synthesis and owner-supplied options screenshot
+  analysis; images are not retained, tools are disabled, outputs cannot create
+  orders, and use remains subject to `LMIO_OPENAI_MONTHLY_CAP_USD`;
 - `LMIO_ADMIN_API_KEY`: protects mutating HTTP endpoints.
 - `LMIO_IBKR_BRIDGE_KEY`: authenticates the minimal outbound-only local paper
   TWS status and bounded option-research bridge; see
