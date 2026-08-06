@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -127,6 +127,110 @@ def test_ibkr_bridge_rejects_sensitive_extra_fields(
 
     assert response.status_code == 422
     assert service.store.latest_provider_health() is None
+
+
+def test_options_bridge_requires_two_qualified_scans_before_telegram(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "runtime.sqlite3",
+        environment="production",
+        ibkr_bridge_key="bridge-test-key",
+    )
+    service = LMIOService(settings)
+    monkeypatch.setattr("lmio.security.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.main.get_service", lambda: service)
+    now = datetime.now(UTC)
+
+    def payload(observed_at: datetime) -> dict[str, object]:
+        return {
+            "observed_at": datetime.now(UTC).isoformat(),
+            "source": "ibkr_tws_paper_delayed",
+            "bridge_version": "2",
+            "observations": [
+                {
+                    "symbol": "SPY",
+                    "expiry": (now + timedelta(days=30)).date().isoformat(),
+                    "strike": 700,
+                    "right": "call",
+                    "observed_at": observed_at.isoformat(),
+                    "source": "ibkr_tws_paper_delayed",
+                    "source_url": "https://www.interactivebrokers.com/",
+                    "data_mode": "delayed",
+                    "delay_minutes": 15,
+                    "underlying_price": 695,
+                    "bid": 5.0,
+                    "ask": 5.5,
+                    "last": 5.5,
+                    "volume": 1000,
+                    "open_interest": 200,
+                }
+            ],
+        }
+
+    first = request(
+        "POST",
+        "/api/v1/providers/ibkr/options",
+        headers={"x-lmio-ibkr-key": "bridge-test-key"},
+        json=payload(now - timedelta(minutes=5)),
+    )
+    second = request(
+        "POST",
+        "/api/v1/providers/ibkr/options",
+        headers={"x-lmio-ibkr-key": "bridge-test-key"},
+        json=payload(now),
+    )
+
+    assert first.status_code == 200
+    assert first.json()["confirmed"] == 0
+    assert second.status_code == 200
+    assert second.json()["confirmed"] == 1
+    assert second.json()["telegram"] == ["queued_not_configured"]
+    board = request("GET", "/api/v1/options/board", headers={"x-lmio-read-key": ""})
+    assert board.status_code == 401
+    direct = service.store.history_json("options_flow")
+    assert direct[0]["payload"]["confirmation_state"] == "confirmed_twice"
+    assert service.store.counts()["options_flow"] == 2
+
+
+def test_owner_can_import_manual_barchart_csv_without_vendor_credentials(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "runtime.sqlite3",
+        environment="production",
+        read_api_key="read-test-key",
+        admin_api_key="admin-test-key",
+    )
+    service = LMIOService(settings)
+    monkeypatch.setattr("lmio.security.get_settings", lambda: settings)
+    monkeypatch.setattr("lmio.main.get_service", lambda: service)
+    response = request(
+        "POST",
+        "/api/v1/providers/options/barchart-csv",
+        headers={
+            "x-lmio-read-key": "read-test-key",
+            "x-lmio-key": "admin-test-key",
+        },
+        json={
+            "csv_text": (
+                "Symbol,Exp Date,Strike,Type,Bid,Ask,Last,Volume,Open Int\n"
+                "SPY,09/18/26,700,Call,5.00,5.50,5.50,1000,200\n"
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["received"] == 1
+    assert response.json()["stored"] == 1
+    latest = service.store.latest_provider_health()
+    assert latest is not None
+    assert latest["provider"] == "barchart_manual_csv"
+    assert "password" not in response.text.lower()
 
 
 def test_operational_lineage_api_is_protected_and_redacts_provider_rows(

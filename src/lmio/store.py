@@ -624,6 +624,7 @@ class RuntimeStore:
             "valuation_input_records",
             "operational_lineage",
             "market_regimes",
+            "options_flow",
         }
         if table not in allowed:
             raise ValueError(f"unsupported append table: {table}")
@@ -700,6 +701,7 @@ class RuntimeStore:
             "valuation_input_records",
             "operational_lineage",
             "market_regimes",
+            "options_flow",
         }
         if table not in allowed:
             raise ValueError(f"unsupported history table: {table}")
@@ -743,6 +745,7 @@ class RuntimeStore:
             "watchlist_members",
             "synthetic_records",
             "market_regimes",
+            "options_flow",
             "top3_evaluations",
             "pipeline_runs",
             "pipeline_stages",

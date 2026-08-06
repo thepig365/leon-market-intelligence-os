@@ -160,6 +160,80 @@ a:focus-visible {
   font-weight: 700;
 }
 
+.optionsStatusGrid,
+.optionsGrid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.optionsMetrics strong {
+  font-size: clamp(1.35rem, 3vw, 2rem);
+}
+
+.optionCard {
+  margin: 0;
+}
+
+.optionCard .message {
+  border-left: 3px solid var(--warning);
+  color: var(--muted);
+  padding-left: 14px;
+}
+
+.optionsLimitations {
+  margin-top: 28px;
+}
+
+.optionsImport {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 20px;
+  margin: 0 auto 48px;
+  max-width: 1180px;
+  padding: clamp(20px, 4vw, 32px);
+}
+
+.optionsImport h2 {
+  margin: 4px 0 8px;
+}
+
+.optionsImport p {
+  color: var(--muted);
+  max-width: 72ch;
+}
+
+.optionsImport form {
+  display: grid;
+  gap: 12px;
+  max-width: 520px;
+}
+
+.optionsImport input[type="file"] {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 14px;
+}
+
+.optionsImport .secondaryButton {
+  background: var(--accent-deep);
+  border: 1px solid var(--accent);
+  color: var(--on-accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  padding: 14px 16px;
+}
+
+@media (max-width: 760px) {
+  .optionsStatusGrid,
+  .optionsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 720px) {
   .publicAuditHero {
     display: grid;

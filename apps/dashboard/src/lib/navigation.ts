@@ -52,11 +52,10 @@ export const dashboardSections: DashboardSection[] = [
   },
   {
     slug: "unusual-options",
-    label: "异常期权",
-    eyebrow: "UNUSUAL OPTIONS",
-    description: "V1 延后模块；未选择数据提供商，不显示虚构数据。",
-    endpoint: null,
-    deferred: true,
+    label: "Options Trading",
+    eyebrow: "期权研究 · RESEARCH ONLY",
+    description: "异常期权成交研究、数据状态和 Telegram 提醒；不构成买卖信号，不执行订单。",
+    endpoint: "/api/v1/options/board",
   },
   {
     slug: "watchlists",

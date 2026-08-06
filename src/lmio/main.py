@@ -19,6 +19,12 @@ from lmio.news import news_impact_score
 from lmio.news_plan import propose_news_plan
 from lmio.news_price import ConfirmationState, NewsPriceConfirmation
 from lmio.news_research import build_news_research_board
+from lmio.options import (
+    OptionBatch,
+    format_option_alert,
+    parse_barchart_csv,
+    persisted_option,
+)
 from lmio.plans import ConditionalPlan, PlanState, transition_with_evidence
 from lmio.roles import Principal
 from lmio.scheduler import run_scheduled_job, scheduler_status
@@ -58,7 +64,7 @@ DASHBOARD_PAGES = {
     "reports-journal": "报告与日志",
     "system-health": "系统健康",
     "settings": "设置",
-    "unusual-options": "异常期权（延后）",
+    "unusual-options": "Options Trading / 期权研究",
     "paper-trades": "模拟交易（关闭）",
 }
 
@@ -76,7 +82,10 @@ async def require_runtime_read_key(request: Request, call_next: Any) -> Response
         request.headers.get("authorization"), request.headers.get("x-lmio-cron-key")
     )
     webhook_path = request.url.path == "/api/v1/telegram/webhook"
-    bridge_path = request.url.path == "/api/v1/providers/ibkr/heartbeat"
+    bridge_path = request.url.path in {
+        "/api/v1/providers/ibkr/heartbeat",
+        "/api/v1/providers/ibkr/options",
+    }
     if (
         request.url.path not in {"/health", "/favicon.ico"}
         and not webhook_path
@@ -141,7 +150,7 @@ async def telegram_webhook(request: Request) -> dict[str, str]:
                 "LMIO 查询帮助",
                 "直接发送股票代码，例如：SNDK",
                 "也可以发送：/quote SNDK",
-                "命令：/status /health /top3 /top10 /news /help",
+                "命令：/status /health /top3 /top10 /news /options /help",
                 "系统只提供研究信息，不会执行交易。",
             )
         )
@@ -200,6 +209,39 @@ async def telegram_webhook(request: Request) -> dict[str, str]:
                     ],
                     "新闻只触发研究，必须由价格确认。",
                 ]
+            )
+    elif normalised.lower().startswith("/options"):
+        requested = normalised.removeprefix("/options").strip().upper()
+        symbol = requested if requested and requested.replace(".", "").isalnum() else None
+        board = _options_board_payload(symbol)
+        candidates = list(board.get("candidates") or [])[:5]
+        provider = dict(board.get("provider") or {})
+        if not candidates:
+            response = "\n".join(
+                (
+                    "LMIO · Options Trading（非交易信号）",
+                    f"资料状态：{provider.get('state', 'not_verified')}",
+                    f"最近观察：{provider.get('last_observed_at') or '尚无'}",
+                    "当前没有经过两次确认的异常期权候选。",
+                    "LMIO 不会因此执行任何订单。",
+                )
+            )
+        else:
+            lines = []
+            for item in candidates:
+                analysis = dict(item.get("analysis") or {})
+                right = "Call" if item.get("right") == "call" else "Put"
+                lines.append(
+                    f"- {item.get('symbol')} {item.get('expiry')} "
+                    f"{item.get('strike')} {right} · Vol/OI "
+                    f"{analysis.get('volume_oi_ratio')}"
+                )
+            response = "\n".join(
+                (
+                    "LMIO · Options Trading（非交易信号）",
+                    *lines,
+                    "必须核对新闻、标的走势及次日 OI；LMIO 不会下单。",
+                )
             )
     else:
         symbol = parse_symbol_query(normalised)
@@ -343,6 +385,177 @@ def ibkr_bridge_heartbeat(
         "record_id": record_id,
         "recorded_at": now.isoformat(),
     }
+
+
+def _previous_option_candidate(
+    history: list[dict[str, Any]],
+    *,
+    contract_key: str,
+    observed_at: datetime,
+) -> bool:
+    """Require a second bounded observation before alerting Leon."""
+
+    for item in history:
+        payload = dict(item.get("payload") or {})
+        analysis = dict(payload.get("analysis") or {})
+        if analysis.get("contract_key") != contract_key or not analysis.get("candidate"):
+            continue
+        try:
+            previous_at = datetime.fromisoformat(str(payload["observed_at"]).replace("Z", "+00:00"))
+        except (KeyError, ValueError):
+            continue
+        gap = observed_at - previous_at.astimezone(UTC)
+        if timedelta(minutes=2) <= gap <= timedelta(minutes=30):
+            return True
+    return False
+
+
+def _record_options_batch(batch: OptionBatch) -> dict[str, object]:
+    """Persist one bounded, source-attributed option research batch."""
+    now = datetime.now(UTC)
+    observed_at = batch.observed_at.astimezone(UTC)
+    if observed_at < now - timedelta(minutes=20) or observed_at > now + timedelta(minutes=1):
+        raise HTTPException(
+            status_code=422,
+            detail="Options batch timestamp is outside the window.",
+        )
+
+    service = get_service()
+    existing = service.store.history_json("options_flow", 200)
+    received = len(batch.observations)
+    qualified = 0
+    confirmed = 0
+    stored = 0
+    deliveries: list[str] = []
+    symbols = sorted({item.symbol for item in batch.observations})
+    field_coverage = {
+        field: sum(
+            1
+            for observation in batch.observations
+            if getattr(observation, field) is not None
+        )
+        for field in ("bid", "ask", "last", "volume", "open_interest")
+    }
+
+    for observation in batch.observations:
+        payload = persisted_option(observation)
+        analysis = dict(payload["analysis"])
+        if not analysis["candidate"]:
+            continue
+        qualified += 1
+        is_confirmed = _previous_option_candidate(
+            existing,
+            contract_key=str(analysis["contract_key"]),
+            observed_at=observation.observed_at,
+        )
+        payload["confirmation_state"] = "confirmed_twice" if is_confirmed else "first_seen"
+        payload["confirmation_count"] = 2 if is_confirmed else 1
+        if not service.store.mark_ingestion_fingerprint(
+            observation.fingerprint, "options_flow"
+        ):
+            continue
+        service.store.append_json(
+            "options_flow",
+            {
+                "symbol": observation.symbol,
+                "source": observation.source,
+                "source_url": observation.source_url,
+                "observed_at": observation.observed_at.isoformat(),
+                "schema_version": "options-v1",
+                "payload": payload,
+            },
+        )
+        stored += 1
+        if not is_confirmed:
+            continue
+        confirmed += 1
+        delivery = queue_or_send(
+            service.store,
+            format_option_alert(payload),
+            bot_token=service.settings.telegram_bot_token.get_secret_value(),
+            chat_id=service.settings.telegram_chat_id.get_secret_value(),
+            kind=MessageKind.AFTER_OPEN,
+            max_per_hour=10,
+            dedupe_context=f"options:{observation.contract_key}:{observation.observed_at.date()}",
+        )
+        deliveries.append(delivery)
+
+    provider_state = "ready" if received else "degraded"
+    service.store.append_json(
+        "provider_health",
+        {
+            "provider": (
+                "ibkr_options_delayed"
+                if batch.source == "ibkr_tws_paper_delayed"
+                else "barchart_manual_csv"
+            ),
+            "state": provider_state,
+            "payload": {
+                "observed_at": observed_at.isoformat(),
+                "source": batch.source,
+                "data_mode": (
+                    "delayed" if batch.source == "ibkr_tws_paper_delayed" else "manual"
+                ),
+                "received": received,
+                "qualified": qualified,
+                "confirmed": confirmed,
+                "stored": stored,
+                "symbols": symbols,
+                "field_coverage": field_coverage,
+                "execution_allowed": False,
+                "data_scope": "bounded_contract_market_data_only",
+            },
+        },
+    )
+    audit_event(
+        "ibkr_options_batch_recorded",
+        received=received,
+        qualified=qualified,
+        confirmed=confirmed,
+        stored=stored,
+        symbols=symbols,
+    )
+    return {
+        "status": "recorded",
+        "received": received,
+        "qualified": qualified,
+        "confirmed": confirmed,
+        "stored": stored,
+        "telegram": deliveries,
+        "execution_allowed": False,
+        "recorded_at": now.isoformat(),
+    }
+
+
+@app.post("/api/v1/providers/ibkr/options", tags=["providers"])
+def ibkr_options_batch(
+    batch: OptionBatch,
+    _principal: Annotated[Principal, Depends(require_ibkr_bridge)],
+) -> dict[str, object]:
+    """Persist bounded delayed option research from Leon's local paper TWS."""
+
+    if batch.source != "ibkr_tws_paper_delayed":
+        raise HTTPException(status_code=422, detail="IBKR endpoint requires IBKR source.")
+    return _record_options_batch(batch)
+
+
+class BarchartCSVImport(BaseModel):
+    csv_text: str = Field(min_length=1, max_length=1_000_000)
+
+
+@app.post(
+    "/api/v1/providers/options/barchart-csv",
+    tags=["providers"],
+    dependencies=[Depends(require_admin)],
+)
+def import_barchart_csv(payload: BarchartCSVImport) -> dict[str, object]:
+    """Import a CSV downloaded by Leon; never log in to or scrape Barchart."""
+
+    try:
+        batch = parse_barchart_csv(payload.csv_text)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return _record_options_batch(batch)
 
 
 def _latest_acceptance_feedback() -> list[dict[str, Any]]:
@@ -1310,12 +1523,97 @@ app.get("/api/reports", tags=["research"])(report_history)
 app.get("/api/strategy-performance", tags=["research"])(performance_history)
 
 
-@app.get("/api/options/{symbol}", tags=["deferred"])
-def deferred_options(symbol: str) -> dict[str, str]:
-    raise HTTPException(
-        status_code=409,
-        detail=f"Options flow is deferred in V1; no provider is active for {symbol.upper()}.",
-    )
+def _options_board_payload(symbol: str | None = None) -> dict[str, object]:
+    service = get_service()
+    records = service.store.history_json("options_flow", 200)
+    latest_by_contract: dict[str, dict[str, Any]] = {}
+    for record in records:
+        payload = dict(record.get("payload") or {})
+        analysis = dict(payload.get("analysis") or {})
+        contract_key = str(analysis.get("contract_key") or "")
+        if not contract_key or (symbol and str(payload.get("symbol")) != symbol.upper()):
+            continue
+        latest_by_contract.setdefault(contract_key, payload)
+
+    candidates = sorted(
+        latest_by_contract.values(),
+        key=lambda item: (
+            int(item.get("confirmation_count") or 0),
+            float(dict(item.get("analysis") or {}).get("volume_oi_ratio") or 0),
+        ),
+        reverse=True,
+    )[:50]
+    provider_events = [
+        item
+        for item in service.store.history_json("provider_health", 200)
+        if item.get("provider") in {"ibkr_options_delayed", "barchart_manual_csv"}
+    ]
+    latest_provider = provider_events[0] if provider_events else None
+    latest_payload = dict((latest_provider or {}).get("payload") or {})
+    latest_time = latest_payload.get("observed_at")
+    stale = True
+    if latest_time:
+        try:
+            parsed = datetime.fromisoformat(str(latest_time).replace("Z", "+00:00"))
+            stale = datetime.now(UTC) - parsed.astimezone(UTC) > timedelta(minutes=20)
+        except ValueError:
+            stale = True
+    return {
+        "title": "Options Trading / 期权研究",
+        "purpose": "异常期权成交研究与提醒；不是买卖信号，不具备订单执行能力。",
+        "generated_at": datetime.now(UTC).isoformat(),
+        "provider": {
+            "name": (
+                "Barchart manual CSV"
+                if (latest_provider or {}).get("provider") == "barchart_manual_csv"
+                else "IBKR TWS Paper delayed options"
+            ),
+            "state": (latest_provider or {}).get("state", "not_verified"),
+            "stale": stale,
+            "last_observed_at": latest_time,
+            "data_mode": latest_payload.get("data_mode", "delayed"),
+            "symbols": latest_payload.get("symbols", []),
+            "records_received_last_batch": latest_payload.get("received", 0),
+            "qualified_last_batch": latest_payload.get("qualified", 0),
+            "field_coverage": latest_payload.get("field_coverage", {}),
+        },
+        "thresholds": {
+            "minimum_volume": 500,
+            "minimum_open_interest": 100,
+            "minimum_volume_oi_ratio": 1.25,
+            "minimum_option_price_usd": 0.10,
+            "maximum_bid_ask_spread_pct": 20,
+            "days_to_expiry": "7–60",
+            "telegram_confirmation": "必须连续两次扫描达到门槛",
+        },
+        "candidates": candidates,
+        "candidate_count": len(candidates),
+        "limitations": [
+            "免费或未订阅行情可能延迟，页面必须同时查看数据时间。",
+            "成交量与未平仓量不能证明开仓、平仓或机构意图。",
+            "方向标签只是报价位置推断，必须结合次日 OI、新闻及标的走势确认。",
+            "Barchart 仅作人工 CSV 或原生邮件核对；LMIO 不抓取其网页。",
+        ],
+        "safety": {
+            "can_trade": False,
+            "paper_orders": False,
+            "live_orders": False,
+            "order_endpoint": False,
+        },
+    }
+
+
+@app.get("/api/v1/options/board", tags=["research"])
+def options_board() -> dict[str, object]:
+    return _options_board_payload()
+
+
+@app.get("/api/options/{symbol}", tags=["research"])
+def options_by_symbol(symbol: str) -> dict[str, object]:
+    normalised = symbol.strip().upper()
+    if not normalised or len(normalised) > 10:
+        raise HTTPException(status_code=422, detail="Invalid symbol.")
+    return _options_board_payload(normalised)
 
 
 @app.post(
@@ -1560,12 +1858,15 @@ def dashboard_page(page: str) -> str:
     report = service.store.latest_json("reports")
     if page == "command-centre":
         return command_centre()
-    if page in {"unusual-options", "paper-trades"}:
+    if page == "unusual-options":
+        board = _options_board_payload()
+        provider = dict(board["provider"])
         status = (
-            "V1 延后模块，未配置数据提供商。"
-            if page == "unusual-options"
-            else "CAN_TRADE、LIVE_TRADING_ENABLED 和 PAPER_TRADING_ENABLED 均为 false。"
+            f"已保存 {board['candidate_count']} 个异常活动候选；"
+            f"数据源状态 {provider.get('state')}，交易执行保持关闭。"
         )
+    elif page == "paper-trades":
+        status = "CAN_TRADE、LIVE_TRADING_ENABLED 和 PAPER_TRADING_ENABLED 均为 false。"
     elif page == "intrinsic-value":
         valuations = service.store.history_json("valuation_runs")
         status = f"已保存 {len(valuations)} 个版本化估值运行；可通过 API 查看完整假设与敏感度。"
