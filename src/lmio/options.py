@@ -108,9 +108,7 @@ DEFAULT_THRESHOLDS = OptionThresholds()
 
 def _csv_field(row: dict[str, str], *aliases: str) -> str:
     normalised = {
-        str(key).strip().lower(): str(value or "").strip()
-        for key, value in row.items()
-        if key
+        str(key).strip().lower(): str(value or "").strip() for key, value in row.items() if key
     }
     return next(
         (normalised[name.lower()] for name in aliases if normalised.get(name.lower())),
@@ -172,9 +170,7 @@ def parse_barchart_csv(
                 ask=_csv_number(_csv_field(row, "Ask")),
                 last=_csv_number(_csv_field(row, "Last", "Last Price")),
                 volume=int(_csv_number(_csv_field(row, "Volume")) or 0),
-                open_interest=int(
-                    _csv_number(_csv_field(row, "Open Int", "Open Interest")) or 0
-                ),
+                open_interest=int(_csv_number(_csv_field(row, "Open Int", "Open Interest")) or 0),
                 implied_volatility=iv,
                 delta=_csv_number(_csv_field(row, "Delta")),
             )
@@ -227,8 +223,7 @@ def classify_option(
         if value is None
     ]
     checks = {
-        "volume": observation.volume is not None
-        and observation.volume >= thresholds.min_volume,
+        "volume": observation.volume is not None and observation.volume >= thresholds.min_volume,
         "open_interest": observation.open_interest is not None
         and observation.open_interest >= thresholds.min_open_interest,
         "volume_oi_ratio": ratio is not None and ratio >= thresholds.min_volume_oi_ratio,
@@ -298,10 +293,7 @@ def format_option_alert(payload: dict[str, Any]) -> str:
     return "\n".join(
         (
             "LMIO 期权研究提醒｜非交易信号",
-            (
-                f"{payload.get('symbol')} {payload.get('expiry')} "
-                f"{payload.get('strike')} {right}"
-            ),
+            (f"{payload.get('symbol')} {payload.get('expiry')} {payload.get('strike')} {right}"),
             f"成交量：{payload.get('volume')}｜未平仓量：{payload.get('open_interest')}",
             f"成交量/OI：{ratio}｜价差：{analysis.get('spread_pct')}%",
             (

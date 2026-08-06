@@ -430,9 +430,7 @@ def _record_options_batch(batch: OptionBatch) -> dict[str, object]:
     symbols = sorted({item.symbol for item in batch.observations})
     field_coverage = {
         field: sum(
-            1
-            for observation in batch.observations
-            if getattr(observation, field) is not None
+            1 for observation in batch.observations if getattr(observation, field) is not None
         )
         for field in ("bid", "ask", "last", "volume", "open_interest")
     }
@@ -450,9 +448,7 @@ def _record_options_batch(batch: OptionBatch) -> dict[str, object]:
         )
         payload["confirmation_state"] = "confirmed_twice" if is_confirmed else "first_seen"
         payload["confirmation_count"] = 2 if is_confirmed else 1
-        if not service.store.mark_ingestion_fingerprint(
-            observation.fingerprint, "options_flow"
-        ):
+        if not service.store.mark_ingestion_fingerprint(observation.fingerprint, "options_flow"):
             continue
         service.store.append_json(
             "options_flow",
@@ -493,9 +489,7 @@ def _record_options_batch(batch: OptionBatch) -> dict[str, object]:
             "payload": {
                 "observed_at": observed_at.isoformat(),
                 "source": batch.source,
-                "data_mode": (
-                    "delayed" if batch.source == "ibkr_tws_paper_delayed" else "manual"
-                ),
+                "data_mode": ("delayed" if batch.source == "ibkr_tws_paper_delayed" else "manual"),
                 "received": received,
                 "qualified": qualified,
                 "confirmed": confirmed,

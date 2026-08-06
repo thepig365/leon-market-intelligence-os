@@ -99,9 +99,7 @@ class PaperTWSProbe(EWrapper, EClient):
         self.market_data_types[reqId] = marketDataType
 
     def tickPrice(self, reqId: int, tickType: int, price: float, attrib: object) -> None:
-        key = {1: "bid", 2: "ask", 4: "last", 66: "bid", 67: "ask", 68: "last"}.get(
-            tickType
-        )
+        key = {1: "bid", 2: "ask", 4: "last", 66: "bid", 67: "ask", 68: "last"}.get(tickType)
         if key and price >= 0:
             self.quotes.setdefault(reqId, {})[key] = float(price)
 
@@ -267,9 +265,7 @@ def collect_options(
         probe.option_diagnostics["eligible_strikes"] += len(strikes)
         for strike in strikes:
             for right in ("C", "P"):
-                symbol_count = len(
-                    [item for item in observations if item["symbol"] == symbol]
-                )
+                symbol_count = len([item for item in observations if item["symbol"] == symbol])
                 if symbol_count >= contract_limit:
                     break
                 contract = Contract()
