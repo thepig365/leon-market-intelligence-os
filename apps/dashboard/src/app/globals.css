@@ -185,6 +185,61 @@ a:focus-visible {
   margin-top: 28px;
 }
 
+.optionsFactsTableWrap {
+  border: 1px solid var(--line);
+  margin-top: 22px;
+  overflow-x: auto;
+}
+
+.optionsFactsTableWrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.optionsFactsTable {
+  border-collapse: collapse;
+  min-width: 1320px;
+  width: 100%;
+}
+
+.optionsFactsTable caption {
+  color: var(--muted);
+  font-size: 0.82rem;
+  padding: 12px 14px;
+  text-align: left;
+}
+
+.optionsFactsTable th,
+.optionsFactsTable td {
+  border-top: 1px solid var(--line);
+  padding: 12px 14px;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.optionsFactsTable thead th {
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 0.76rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.optionsFactsTable tbody th,
+.optionsFactsTable strong {
+  color: var(--ink);
+}
+
+.optionsFactsTable tbody tr:hover {
+  background: var(--paper);
+}
+
+.optionsFactsTable .optionsFactsBasis {
+  min-width: 280px;
+  white-space: normal;
+}
+
 .optionsImport {
   background: var(--surface);
   border: 1px solid var(--line);

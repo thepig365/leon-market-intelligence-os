@@ -173,7 +173,10 @@ if (
   !humanReadablePanels.includes("自动下单") ||
   !humanReadablePanels.includes("主动买入") ||
   !humanReadablePanels.includes("主动卖出") ||
-  !humanReadablePanels.includes("剩余天数待确认")
+  !humanReadablePanels.includes("剩余天数待确认") ||
+  !humanReadablePanels.includes("optionsFactsTable") ||
+  !humanReadablePanels.includes("<table") ||
+  !humanReadablePanels.includes("B/S")
 ) {
   throw new Error("Options screenshot analysis must display plain-language output and no-order boundary.");
 }
