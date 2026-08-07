@@ -16,7 +16,7 @@ from lmio.providers.contracts import ResearchWorker
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 RESEARCH_PROMPT_VERSION = "lmio-evidence-synthesis-v1"
 NEWS_PROMPT_VERSION = "lmio-news-synthesis-v1"
-OPTIONS_SCREENSHOT_PROMPT_VERSION = "lmio-options-screenshot-analysis-v2"
+OPTIONS_SCREENSHOT_PROMPT_VERSION = "lmio-options-screenshot-analysis-v3"
 
 
 class ResearchSynthesis(BaseModel):
@@ -56,13 +56,19 @@ class ExtractedOptionAlert(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     symbol: str
+    trade_date: str | None
+    trade_time: str | None
     expiry: str
     days_to_expiry: int | None
     strike: float = Field(ge=0)
     right: str = Field(pattern="^(call|put)$")
     contracts: int = Field(ge=0)
     trade_price: float = Field(ge=0)
+    bid_price: float | None = Field(ge=0)
+    ask_price: float | None = Field(ge=0)
+    source_action_label: str = Field(pattern="^(bought|sold|none)$")
     aggressor_side: str = Field(pattern="^(buy|sell|unknown)$")
+    aggressor_method: str = Field(pattern="^(explicit_label|quote_position|unknown)$")
     aggressor_basis: str
     open_interest: int = Field(ge=0)
     total_premium_usd: float = Field(ge=0)
@@ -294,6 +300,7 @@ class OpenAIOptionsScreenshotWorker:
     def analyse(self, image_data_url: str) -> dict[str, Any]:
         if not self._api_key or not self._model:
             raise RuntimeError("OpenAI options screenshot worker is disabled")
+        today = self._today()
         request_body = {
             "model": self._model,
             "store": False,
@@ -306,10 +313,19 @@ class OpenAIOptionsScreenshotWorker:
                 "组合对冲或未来走势。不要给出直接买入、卖出、目标价、仓位或下单指令；只能给出"
                 "观察、等待确认、回避或资料不足，并列出成交方向、次日 OI、标的走势、IV、价差、"
                 "新闻与流动性等确认条件。expiry 必须输出 ISO 日期 YYYY-MM-DD。"
-                "若截图明确写 BOUGHT，aggressor_side 输出 buy，并说明截图标注主动买入；"
-                "若明确写 SOLD，输出 sell，并说明截图标注主动卖出；没有明确字样则必须输出 unknown，"
-                "不得根据 CALL、PUT 或价格猜测主动方向。"
-                "trade_price 只记录截图成交价。days_to_expiry 先输出 null，由 LMIO 按日期计算。"
+                "trade_date 只在截图清楚显示该成交所属日期时输出 ISO 日期 YYYY-MM-DD；"
+                "trade_time 只记录截图清楚显示的消息或成交时间，否则两者输出 null。"
+                "若同一日期标题覆盖多条消息，可把该明确日期应用到标题下的每条成交。"
+                "系统会在用户消息提供 analysis_date；截图只显示月日时，"
+                "仅当月日与 analysis_date 完全一致，"
+                "才可使用 analysis_date 的年份补全，否则年份不清楚时不得猜测。"
+                "trade_price 只记录截图成交价；bid_price 和 ask_price 只在截图明确显示"
+                "对应报价时记录，否则 null。"
+                "若截图明确写 BOUGHT，source_action_label 输出 bought；若明确写 SOLD，输出 sold；"
+                "没有明确字样则输出 none。aggressor_side、aggressor_method 和 aggressor_basis "
+                "可先按可见证据输出，"
+                "但 LMIO 会按明确标签或 Bid/Ask 位置重新核定。不得根据 CALL、PUT 本身猜测主动方向。"
+                "days_to_expiry 先输出 null，由 LMIO 优先按截图交易日期、否则按分析日期计算。"
             ),
             "input": [
                 {
@@ -319,6 +335,7 @@ class OpenAIOptionsScreenshotWorker:
                             "type": "input_text",
                             "text": (
                                 "分析这张期权异动截图。区分截图事实与研究推断，返回规定 JSON。"
+                                f"analysis_date 为 {today.isoformat()}。"
                             ),
                         },
                         {"type": "input_image", "image_url": image_data_url, "detail": "high"},
@@ -346,12 +363,56 @@ class OpenAIOptionsScreenshotWorker:
         )
         response = self._transport(request, self._timeout)
         result = OptionsScreenshotSynthesis.model_validate_json(_extract_output_text(response))
-        today = self._today()
         for alert in result.alerts:
+            reference_date = today
+            if alert.trade_date:
+                try:
+                    reference_date = date.fromisoformat(alert.trade_date)
+                except ValueError:
+                    alert.trade_date = None
             try:
-                alert.days_to_expiry = (date.fromisoformat(alert.expiry) - today).days
+                alert.days_to_expiry = (date.fromisoformat(alert.expiry) - reference_date).days
             except ValueError:
                 alert.days_to_expiry = None
+
+            if alert.source_action_label == "bought":
+                alert.aggressor_side = "buy"
+                alert.aggressor_method = "explicit_label"
+                alert.aggressor_basis = "截图明确标注 BOUGHT；按来源文字记录为主动买入。"
+            elif alert.source_action_label == "sold":
+                alert.aggressor_side = "sell"
+                alert.aggressor_method = "explicit_label"
+                alert.aggressor_basis = "截图明确标注 SOLD；按来源文字记录为主动卖出。"
+            elif (
+                alert.bid_price is not None
+                and alert.ask_price is not None
+                and alert.ask_price >= alert.bid_price
+                and alert.trade_price >= alert.ask_price
+            ):
+                alert.aggressor_side = "buy"
+                alert.aggressor_method = "quote_position"
+                alert.aggressor_basis = (
+                    f"截图成交价 ${alert.trade_price:g} 达到或高于 Ask ${alert.ask_price:g}；"
+                    "推定为买方主动，但报价与成交时点未必完全同步。"
+                )
+            elif (
+                alert.bid_price is not None
+                and alert.ask_price is not None
+                and alert.ask_price >= alert.bid_price
+                and alert.trade_price <= alert.bid_price
+            ):
+                alert.aggressor_side = "sell"
+                alert.aggressor_method = "quote_position"
+                alert.aggressor_basis = (
+                    f"截图成交价 ${alert.trade_price:g} 达到或低于 Bid ${alert.bid_price:g}；"
+                    "推定为卖方主动，但报价与成交时点未必完全同步。"
+                )
+            else:
+                alert.aggressor_side = "unknown"
+                alert.aggressor_method = "unknown"
+                alert.aggressor_basis = (
+                    "截图没有明确 BOUGHT/SOLD，或成交价位于 Bid/Ask 之间，无法可靠确认主动方向。"
+                )
         usage = response.get("usage") if isinstance(response.get("usage"), dict) else {}
         return {
             **result.model_dump(),

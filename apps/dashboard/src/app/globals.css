@@ -198,7 +198,7 @@ a:focus-visible {
 
 .optionsFactsTable {
   border-collapse: collapse;
-  min-width: 1320px;
+  min-width: 1650px;
   width: 100%;
 }
 
@@ -238,6 +238,34 @@ a:focus-visible {
 .optionsFactsTable .optionsFactsBasis {
   min-width: 280px;
   white-space: normal;
+}
+
+.tickerHandoff {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.tickerHandoff:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.srOnly {
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 .optionsImport {

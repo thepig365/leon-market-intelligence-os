@@ -4,6 +4,15 @@ This module identifies **research candidates**, not trades. It cannot create a
 paper or live order and does not read account IDs, balances, positions or order
 history.
 
+Screenshot facts also retain a visible trade date and time when the source
+shows them. Days to expiry are calculated from that trade date; when the date
+is absent, LMIO uses the analysis date and labels the source date as absent.
+An explicit `BOUGHT` or `SOLD` label determines the active side. Without that
+label, LMIO may describe a trade at or above Ask as inferred buyer-initiated,
+or at or below Bid as inferred seller-initiated. A trade inside the spread,
+missing quotes or invalid quotes stays unknown because quote and execution
+timestamps may differ.
+
 ## What Leon sees
 
 - source, observation time and whether the data is delayed;
@@ -43,6 +52,13 @@ coverage gap and does not invent an unusual-volume candidate.
 Generic option ticks may be enabled only after the relevant IBKR market-data
 permission exists, using `--generic-option-ticks` or
 `LMIO_OPTIONS_GENERIC_TICKS=true`. This does not enable trading.
+
+Each screenshot ticker can also be used as a manual handoff: LMIO copies the
+ticker and opens the official IBKR Australia Client Portal. The operator must
+sign in with the Paper Trading account, paste/search the ticker and inspect any
+order manually. LMIO does not receive or store the password, prefill an order,
+choose quantity or transmit an order. The handoff does not change
+`CAN_TRADE = FALSE`.
 
 ### Barchart manual CSV
 

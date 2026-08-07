@@ -56,6 +56,10 @@ const screenshotAnalysis = await readFile(
   new URL("../src/components/options-screenshot-analysis-control.tsx", import.meta.url),
   "utf8",
 );
+const ibkrPaperHandoff = await readFile(
+  new URL("../src/components/ibkr-paper-handoff-link.tsx", import.meta.url),
+  "utf8",
+);
 
 const expected = [
   "command-centre",
@@ -176,9 +180,21 @@ if (
   !humanReadablePanels.includes("剩余天数待确认") ||
   !humanReadablePanels.includes("optionsFactsTable") ||
   !humanReadablePanels.includes("<table") ||
-  !humanReadablePanels.includes("B/S")
+  !humanReadablePanels.includes("B/S") ||
+  !humanReadablePanels.includes("交易日期") ||
+  !humanReadablePanels.includes("Bid") ||
+  !humanReadablePanels.includes("Ask")
 ) {
   throw new Error("Options screenshot analysis must display plain-language output and no-order boundary.");
+}
+for (const required of [
+  "interactivebrokers.com.au/sso/Login",
+  "navigator.clipboard.writeText",
+  "Paper Trading",
+]) {
+  if (!ibkrPaperHandoff.includes(required)) {
+    throw new Error(`IBKR Paper handoff is missing its safe boundary: ${required}`);
+  }
 }
 if (
   humanReadablePanels.includes("JSON.stringify") ||
