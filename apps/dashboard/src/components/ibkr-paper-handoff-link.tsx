@@ -8,14 +8,36 @@ const IBKR_CLIENT_PORTAL_URL =
 export function IbkrPaperHandoffLink({ symbol }: { symbol: string }) {
   const [copied, setCopied] = useState(false);
 
+  async function copyTicker() {
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(symbol);
+        return true;
+      }
+    } catch {
+      // Use the browser-compatible fallback below when clipboard permission is unavailable.
+    }
+
+    const field = document.createElement("textarea");
+    field.value = symbol;
+    field.setAttribute("readonly", "");
+    field.style.position = "fixed";
+    field.style.opacity = "0";
+    document.body.appendChild(field);
+    field.select();
+    const copiedByFallback = document.execCommand("copy");
+    field.remove();
+    return copiedByFallback;
+  }
+
   function openPaperTrading() {
     window.open(IBKR_CLIENT_PORTAL_URL, "_blank", "noopener,noreferrer");
-    if (navigator.clipboard) {
-      void navigator.clipboard.writeText(symbol).then(() => {
+    void copyTicker().then((didCopy) => {
+      if (didCopy) {
         setCopied(true);
         window.setTimeout(() => setCopied(false), 2500);
-      });
-    }
+      }
+    });
   }
 
   return (

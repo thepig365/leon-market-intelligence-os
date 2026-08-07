@@ -190,6 +190,7 @@ if (
 for (const required of [
   "interactivebrokers.com.au/sso/Login",
   "navigator.clipboard.writeText",
+  'document.execCommand("copy")',
   "Paper Trading",
 ]) {
   if (!ibkrPaperHandoff.includes(required)) {
