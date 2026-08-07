@@ -168,7 +168,13 @@ for (const required of ["AI 分析截图", "image/png,image/jpeg,image/webp", "�
     throw new Error(`Options screenshot analysis is missing safety/UI evidence: ${required}`);
   }
 }
-if (!humanReadablePanels.includes("截图白话分析") || !humanReadablePanels.includes("自动下单")) {
+if (
+  !humanReadablePanels.includes("截图白话分析") ||
+  !humanReadablePanels.includes("自动下单") ||
+  !humanReadablePanels.includes("主动买入") ||
+  !humanReadablePanels.includes("主动卖出") ||
+  !humanReadablePanels.includes("剩余天数待确认")
+) {
   throw new Error("Options screenshot analysis must display plain-language output and no-order boundary.");
 }
 if (
