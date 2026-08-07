@@ -198,7 +198,7 @@ a:focus-visible {
 
 .optionsFactsTable {
   border-collapse: collapse;
-  min-width: 1650px;
+  min-width: 1450px;
   width: 100%;
 }
 
@@ -212,7 +212,7 @@ a:focus-visible {
 .optionsFactsTable th,
 .optionsFactsTable td {
   border-top: 1px solid var(--line);
-  padding: 12px 14px;
+  padding: 11px 12px;
   text-align: left;
   vertical-align: top;
   white-space: nowrap;
@@ -236,7 +236,7 @@ a:focus-visible {
 }
 
 .optionsFactsTable .optionsFactsBasis {
-  min-width: 280px;
+  min-width: 220px;
   white-space: normal;
 }
 

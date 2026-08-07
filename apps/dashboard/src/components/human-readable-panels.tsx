@@ -112,10 +112,10 @@ function date(value: unknown) {
 
 function optionRight(value: unknown) {
   return text(value, "unknown").toLowerCase() === "put"
-    ? "看跌期权（PUT）"
+    ? "PUT"
     : text(value, "unknown").toLowerCase() === "call"
-      ? "看涨期权（CALL）"
-      : "期权类型待确认";
+      ? "CALL"
+      : "—";
 }
 
 function activeSide(value: unknown, method: unknown) {
@@ -123,11 +123,11 @@ function activeSide(value: unknown, method: unknown) {
   const basis = text(method, "unknown").toLowerCase();
   if (side === "buy") return basis === "quote_position" ? "推定主动买入" : "主动买入";
   if (side === "sell") return basis === "quote_position" ? "推定主动卖出" : "主动卖出";
-  return "主动方向无法确认";
+  return "";
 }
 
 function expiryDays(value: unknown) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "剩余天数待确认";
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
   if (value > 0) return `剩余 ${Math.round(value)} 天`;
   if (value === 0) return "今天到期";
   return `已到期 ${Math.abs(Math.round(value))} 天`;
@@ -923,8 +923,8 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
                         <th scope="row">
                           <IbkrPaperHandoffLink symbol={text(alert.symbol)} />
                         </th>
-                        <td>{text(alert.trade_date, "截图未显示")}</td>
-                        <td>{text(alert.trade_time, "截图未显示")}</td>
+                        <td>{text(alert.trade_date, "—")}</td>
+                        <td>{text(alert.trade_time, "—")}</td>
                         <td>{optionRight(alert.right)}</td>
                         <td>{text(alert.expiry)}</td>
                         <td>{expiryDays(alert.days_to_expiry)}</td>
@@ -932,13 +932,13 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
                         <td>${number(alert.strike, 2)}</td>
                         <td>{number(alert.contracts)} 张</td>
                         <td>${number(alert.trade_price ?? alert.bought_price, 2)}</td>
-                        <td>{typeof alert.bid_price === "number" ? `$${number(alert.bid_price, 2)}` : "未显示"}</td>
-                        <td>{typeof alert.ask_price === "number" ? `$${number(alert.ask_price, 2)}` : "未显示"}</td>
+                        <td>{typeof alert.bid_price === "number" ? `$${number(alert.bid_price, 2)}` : "—"}</td>
+                        <td>{typeof alert.ask_price === "number" ? `$${number(alert.ask_price, 2)}` : "—"}</td>
                         <td>{number(alert.open_interest)}</td>
                         <td>{number(alert.volume_oi_ratio, 1)}x</td>
                         <td>${number(alert.total_premium_usd)}</td>
                         <td className="optionsFactsBasis">
-                          {text(alert.aggressor_basis, "截图没有明确 BOUGHT 或 SOLD，无法确认主动方向")}
+                          {text(alert.aggressor_basis, "")}
                         </td>
                       </tr>
                     ))}
