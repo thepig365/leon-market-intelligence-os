@@ -177,7 +177,6 @@ if (
   !humanReadablePanels.includes("自动下单") ||
   !humanReadablePanels.includes("主动买入") ||
   !humanReadablePanels.includes("主动卖出") ||
-  !humanReadablePanels.includes("剩余天数待确认") ||
   !humanReadablePanels.includes("optionsFactsTable") ||
   !humanReadablePanels.includes("<table") ||
   !humanReadablePanels.includes("B/S") ||
@@ -186,6 +185,17 @@ if (
   !humanReadablePanels.includes("Ask")
 ) {
   throw new Error("Options screenshot analysis must display plain-language output and no-order boundary.");
+}
+for (const removedTableNoise of [
+  "截图未显示",
+  "剩余天数待确认",
+  "主动方向无法确认",
+  "看涨期权（CALL）",
+  "看跌期权（PUT）",
+]) {
+  if (humanReadablePanels.includes(removedTableNoise)) {
+    throw new Error(`Options facts table still contains verbose unknown text: ${removedTableNoise}`);
+  }
 }
 for (const required of [
   "lmio-tws://open?symbol=",
