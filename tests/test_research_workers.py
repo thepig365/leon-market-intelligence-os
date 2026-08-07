@@ -124,13 +124,19 @@ def test_openai_options_screenshot_worker_is_tool_free_and_does_not_store_image(
                     "alerts": [
                         {
                             "symbol": "AAPL",
+                            "trade_date": "2026-08-07",
+                            "trade_time": "5:22 am",
                             "expiry": "2026-08-10",
                             "days_to_expiry": None,
                             "strike": 317.5,
                             "right": "call",
                             "contracts": 6964,
                             "trade_price": 1.5,
+                            "bid_price": None,
+                            "ask_price": None,
+                            "source_action_label": "bought",
                             "aggressor_side": "buy",
+                            "aggressor_method": "explicit_label",
                             "aggressor_basis": "截图明确写有 BOUGHT。",
                             "open_interest": 3474,
                             "total_premium_usd": 1044182,
@@ -177,11 +183,98 @@ def test_openai_options_screenshot_worker_is_tool_free_and_does_not_store_image(
     assert image["detail"] == "high"
     assert image["image_url"].startswith("data:image/png;base64,")
     assert result["alerts"][0]["days_to_expiry"] == 3
+    assert result["alerts"][0]["trade_date"] == "2026-08-07"
+    assert result["alerts"][0]["trade_time"] == "5:22 am"
     assert result["alerts"][0]["aggressor_side"] == "buy"
+    assert result["alerts"][0]["aggressor_method"] == "explicit_label"
     assert result["alerts"][0]["trade_price"] == 1.5
     assert result["order_created"] is False
     assert result["execution_allowed"] is False
     assert result["usage"] == {"input_tokens": 900, "output_tokens": 300}
+
+
+def test_options_screenshot_uses_trade_date_and_quote_position_without_guessing() -> None:
+    alerts = [
+        {
+            "symbol": "ASK",
+            "trade_date": "2026-08-05",
+            "trade_time": "10:15 am",
+            "expiry": "2026-08-14",
+            "days_to_expiry": None,
+            "strike": 100,
+            "right": "call",
+            "contracts": 500,
+            "trade_price": 1.25,
+            "bid_price": 1.15,
+            "ask_price": 1.25,
+            "source_action_label": "none",
+            "aggressor_side": "unknown",
+            "aggressor_method": "unknown",
+            "aggressor_basis": "模型初稿不得决定。",
+            "open_interest": 100,
+            "total_premium_usd": 62500,
+            "volume_oi_ratio": 5,
+            "extraction_confidence": 0.9,
+        },
+        {
+            "symbol": "MID",
+            "trade_date": None,
+            "trade_time": "10:16 am",
+            "expiry": "2026-08-14",
+            "days_to_expiry": None,
+            "strike": 100,
+            "right": "put",
+            "contracts": 500,
+            "trade_price": 1.20,
+            "bid_price": 1.15,
+            "ask_price": 1.25,
+            "source_action_label": "none",
+            "aggressor_side": "buy",
+            "aggressor_method": "quote_position",
+            "aggressor_basis": "模型不应猜测。",
+            "open_interest": 100,
+            "total_premium_usd": 60000,
+            "volume_oi_ratio": 5,
+            "extraction_confidence": 0.9,
+        },
+    ]
+
+    def transport(request: Request, timeout: float) -> dict[str, object]:
+        request_body = json.loads(request.data or b"{}")
+        input_text = request_body["input"][0]["content"][0]["text"]
+        assert "analysis_date 为 2026-08-07" in input_text
+        return {
+            "output_text": json.dumps(
+                {
+                    "plain_language_summary": "按截图事实分析。",
+                    "alerts": alerts,
+                    "notable_patterns": [],
+                    "bullish_clues": [],
+                    "bearish_clues": [],
+                    "what_this_does_not_prove": ["不能证明开仓。"],
+                    "confirmation_checks": ["核对次日 OI。"],
+                    "ticker_assessments": [],
+                    "overall_confidence": 0.7,
+                }
+            )
+        }
+
+    worker = OpenAIOptionsScreenshotWorker(
+        api_key="server-secret",
+        model="gpt-5.6-luna",
+        transport=transport,
+        today=lambda: date(2026, 8, 7),
+    )
+    result = worker.analyse("data:image/png;base64,iVBORw0KGgo=")
+
+    ask, middle = result["alerts"]
+    assert ask["days_to_expiry"] == 9
+    assert ask["aggressor_side"] == "buy"
+    assert ask["aggressor_method"] == "quote_position"
+    assert "Ask" in ask["aggressor_basis"]
+    assert middle["days_to_expiry"] == 7
+    assert middle["aggressor_side"] == "unknown"
+    assert middle["aggressor_method"] == "unknown"
 
 
 def test_manual_kimi_packet_and_output_are_evidence_bounded() -> None:

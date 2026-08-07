@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { LMIOResult } from "@/lib/lmio";
 import type { DashboardSection } from "@/lib/navigation";
 import { TopTenPanel } from "@/components/top-ten-panel";
+import { IbkrPaperHandoffLink } from "@/components/ibkr-paper-handoff-link";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -117,10 +118,11 @@ function optionRight(value: unknown) {
       : "期权类型待确认";
 }
 
-function activeSide(value: unknown) {
+function activeSide(value: unknown, method: unknown) {
   const side = text(value, "unknown").toLowerCase();
-  if (side === "buy") return "主动买入";
-  if (side === "sell") return "主动卖出";
+  const basis = text(method, "unknown").toLowerCase();
+  if (side === "buy") return basis === "quote_position" ? "推定主动买入" : "主动买入";
+  if (side === "sell") return basis === "quote_position" ? "推定主动卖出" : "主动卖出";
   return "主动方向无法确认";
 }
 
@@ -888,12 +890,18 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
             <section className="plainCard optionsLimitations">
               <p className="eyebrow">EXTRACTED FACTS</p>
               <h2>从截图读取的合约</h2>
+              <p className="message">
+                点击股票代码会复制 ticker 并打开 IBKR 官方入口。请使用 Paper Trading 账户登录并人工核对；
+                LMIO 不保存密码、不建立订单，也不会自动提交交易。
+              </p>
               <div className="optionsFactsTableWrap" tabIndex={0} aria-label="期权截图提取资料表，可横向滚动">
                 <table className="optionsFactsTable">
                   <caption>截图分析时间：{date(screenshotRecord.analysed_at)}</caption>
                   <thead>
                     <tr>
                       <th scope="col">代码</th>
+                      <th scope="col">交易日期</th>
+                      <th scope="col">时间</th>
                       <th scope="col">期权</th>
                       <th scope="col">到期日</th>
                       <th scope="col">剩余</th>
@@ -901,6 +909,8 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
                       <th scope="col">行权价</th>
                       <th scope="col">数量</th>
                       <th scope="col">成交价</th>
+                      <th scope="col">Bid</th>
+                      <th scope="col">Ask</th>
                       <th scope="col">OI</th>
                       <th scope="col">Volume/OI</th>
                       <th scope="col">权利金</th>
@@ -910,14 +920,20 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
                   <tbody>
                     {screenshotAlerts.map((alert, index) => (
                       <tr key={`${text(alert.symbol)}-${text(alert.expiry)}-${number(alert.strike)}-${index}`}>
-                        <th scope="row">{text(alert.symbol)}</th>
+                        <th scope="row">
+                          <IbkrPaperHandoffLink symbol={text(alert.symbol)} />
+                        </th>
+                        <td>{text(alert.trade_date, "截图未显示")}</td>
+                        <td>{text(alert.trade_time, "截图未显示")}</td>
                         <td>{optionRight(alert.right)}</td>
                         <td>{text(alert.expiry)}</td>
                         <td>{expiryDays(alert.days_to_expiry)}</td>
-                        <td><strong>{activeSide(alert.aggressor_side)}</strong></td>
+                        <td><strong>{activeSide(alert.aggressor_side, alert.aggressor_method)}</strong></td>
                         <td>${number(alert.strike, 2)}</td>
                         <td>{number(alert.contracts)} 张</td>
                         <td>${number(alert.trade_price ?? alert.bought_price, 2)}</td>
+                        <td>{typeof alert.bid_price === "number" ? `$${number(alert.bid_price, 2)}` : "未显示"}</td>
+                        <td>{typeof alert.ask_price === "number" ? `$${number(alert.ask_price, 2)}` : "未显示"}</td>
                         <td>{number(alert.open_interest)}</td>
                         <td>{number(alert.volume_oi_ratio, 1)}x</td>
                         <td>${number(alert.total_premium_usd)}</td>
