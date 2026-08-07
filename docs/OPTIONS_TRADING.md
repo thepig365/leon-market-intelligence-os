@@ -63,8 +63,9 @@ or transmit an order. The handoff does not change `CAN_TRADE = FALSE`.
 Install the macOS launcher once with
 `scripts/install_macos_tws_launcher.sh`. It registers only the `lmio-tws://`
 protocol, does not run a network service and does not read credentials or
-order data. Trader Workstation is expected at
-`~/Applications/Trader Workstation/Trader Workstation.app`.
+order data. It asks macOS Launch Services to open the registered
+`Trader Workstation` application, so it does not depend on a hard-coded
+installation path.
 
 ### Barchart manual CSV
 
