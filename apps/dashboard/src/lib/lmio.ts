@@ -158,3 +158,38 @@ export async function refreshLMIO(identity: {
     };
   }
 }
+
+export async function analyseOptionsScreenshot(
+  identity: { id: string; role: "owner" | "operator" },
+  imageDataUrl: string,
+): Promise<LMIOResult> {
+  const checkedAt = new Date().toISOString();
+  try {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/options/screenshot-analysis`, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        ...(await runtimeHeaders()),
+        "Content-Type": "application/json",
+        "x-lmio-actor-id": identity.id,
+        "x-lmio-actor-role": identity.role,
+      },
+      body: JSON.stringify({ image_data_url: imageDataUrl }),
+      signal: AbortSignal.timeout(90_000),
+    });
+    if (!response.ok) {
+      const message = response.status === 429
+        ? "本月 AI 使用上限已达到；不会产生更多调用。"
+        : `截图分析未完成（${response.status}）；截图没有被保存。`;
+      return { state: "unavailable", message, checkedAt };
+    }
+    return { state: "ready", data: await response.json(), checkedAt };
+  } catch (error) {
+    logRuntimeFailure("LMIO options screenshot analysis failed", error);
+    return {
+      state: "unavailable",
+      message: "AI 分析服务暂时不可用；截图没有被保存。",
+      checkedAt,
+    };
+  }
+}

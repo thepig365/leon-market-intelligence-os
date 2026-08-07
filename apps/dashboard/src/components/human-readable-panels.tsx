@@ -761,6 +761,10 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
   const highVolumeContracts = list(highVolume.contracts).map(record);
   const highVolumeState = text(highVolume.state, "not_verified");
   const limitations = list(board.limitations).map((item) => text(item));
+  const screenshotRecord = record(board.screenshot_analysis);
+  const screenshotAnalysis = record(screenshotRecord.analysis);
+  const screenshotAlerts = list(screenshotAnalysis.alerts).map(record);
+  const tickerAssessments = list(screenshotAnalysis.ticker_assessments).map(record);
   const providerReady = text(provider.state, "not_verified") === "ready";
   const stale = provider.stale !== false;
   const tradingLocked =
@@ -797,6 +801,109 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
         <div><span>当前候选</span><strong>{number(board.candidate_count)}</strong></div>
         <div><span>交易能力</span><strong>{tradingLocked ? "关闭" : "异常"}</strong></div>
       </div>
+
+      <div className="sectionHeading" id="screenshot-analysis">
+        <div><p className="eyebrow">AI SCREENSHOT ANALYSIS</p><h2>截图白话分析</h2></div>
+        <p>只解释截图可见资料；不会代替标的行情、次日 OI、新闻、IV 与流动性核查。</p>
+      </div>
+      {screenshotAnalysis.plain_language_summary ? (
+        <>
+          <article className="plainCard">
+            <div className="recordCardTop">
+              <div>
+                <p className="eyebrow">LATEST OWNER-SUPPLIED SCREENSHOT</p>
+                <h2>这张截图大意</h2>
+              </div>
+              <span className="status status-ready">研究草稿</span>
+            </div>
+            <p className="message">{text(screenshotAnalysis.plain_language_summary)}</p>
+            <dl className="factList">
+              <div><dt>识别合约</dt><dd>{screenshotAlerts.length}</dd></div>
+              <div><dt>整体可信度</dt><dd>{percent(screenshotAnalysis.overall_confidence)}</dd></div>
+              <div><dt>分析时间</dt><dd>{date(screenshotRecord.analysed_at)}</dd></div>
+              <div><dt>截图留存</dt><dd>不保存</dd></div>
+              <div><dt>自动下单</dt><dd>不允许</dd></div>
+            </dl>
+          </article>
+
+          {tickerAssessments.length ? (
+            <div className="optionsGrid">
+              {tickerAssessments.map((assessment, index) => {
+                const bias = text(assessment.flow_bias, "unclear");
+                const biasLabel = bias === "bullish_interest"
+                  ? "偏多兴趣"
+                  : bias === "bearish_interest"
+                    ? "偏空兴趣"
+                    : bias === "mixed"
+                      ? "多空混合"
+                      : "方向不清";
+                const stance = text(assessment.research_stance, "insufficient_data");
+                const stanceLabel = stance === "watch"
+                  ? "加入观察"
+                  : stance === "wait_for_confirmation"
+                    ? "等待确认"
+                    : stance === "avoid"
+                      ? "暂时回避"
+                      : "资料不足";
+                return (
+                  <article className="recordCard optionCard" key={`${text(assessment.symbol)}-${index}`}>
+                    <div className="recordCardTop">
+                      <div><p className="eyebrow">{biasLabel}</p><h2>{text(assessment.symbol, "—")}</h2></div>
+                      <span className="status status-empty">{stanceLabel}</span>
+                    </div>
+                    <dl className="factList">
+                      <div><dt>为何值得注意</dt><dd>{text(assessment.why_notable)}</dd></div>
+                      <div><dt>买卖前要确认</dt><dd>{text(assessment.confirmation_needed)}</dd></div>
+                      <div><dt>失效或风险</dt><dd>{text(assessment.invalidation_or_risk)}</dd></div>
+                    </dl>
+                  </article>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {screenshotAlerts.length ? (
+            <section className="plainCard optionsLimitations">
+              <p className="eyebrow">EXTRACTED FACTS</p>
+              <h2>从截图读取的合约</h2>
+              <ul className="commandList">
+                {screenshotAlerts.map((alert, index) => (
+                  <li key={`${text(alert.symbol)}-${text(alert.expiry)}-${number(alert.strike)}-${index}`}>
+                    {text(alert.symbol)} · {text(alert.right).toUpperCase()} · {text(alert.expiry)} ·
+                    行权价 ${number(alert.strike, 2)} · {number(alert.contracts)} 张 ·
+                    成交价 ${number(alert.bought_price, 2)} · OI {number(alert.open_interest)} ·
+                    Volume/OI {number(alert.volume_oi_ratio, 1)}x · 权利金约 ${number(alert.total_premium_usd)}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          <div className="optionsStatusGrid">
+            <article className="plainCard">
+              <p className="eyebrow">POSSIBLE CLUES</p>
+              <h2>多空线索</h2>
+              <h3>偏多线索</h3>
+              <ul className="commandList">{list(screenshotAnalysis.bullish_clues).map((item) => <li key={text(item)}>{text(item)}</li>)}</ul>
+              <h3>偏空线索</h3>
+              <ul className="commandList">{list(screenshotAnalysis.bearish_clues).map((item) => <li key={text(item)}>{text(item)}</li>)}</ul>
+            </article>
+            <article className="plainCard">
+              <p className="eyebrow">CONFIRM BEFORE ACTION</p>
+              <h2>不能直接得出的结论</h2>
+              <ul className="commandList warningList">
+                {list(screenshotAnalysis.what_this_does_not_prove).map((item) => <li key={text(item)}>{text(item)}</li>)}
+              </ul>
+              <h3>下一步核对</h3>
+              <ul className="commandList">
+                {list(screenshotAnalysis.confirmation_checks).map((item) => <li key={text(item)}>{text(item)}</li>)}
+              </ul>
+            </article>
+          </div>
+        </>
+      ) : (
+        <EmptyPanel message="尚未上传截图。上传后，最新分析会显示在这里；系统不会用示例分析填充页面。" />
+      )}
 
       <div className="sectionHeading">
         <div><p className="eyebrow">CBOE MOST ACTIVE</p><h2>高成交量期权标的</h2></div>

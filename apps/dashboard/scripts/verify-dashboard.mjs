@@ -52,6 +52,10 @@ const refreshControl = await readFile(
   new URL("../src/components/refresh-control.tsx", import.meta.url),
   "utf8",
 );
+const screenshotAnalysis = await readFile(
+  new URL("../src/components/options-screenshot-analysis-control.tsx", import.meta.url),
+  "utf8",
+);
 
 const expected = [
   "command-centre",
@@ -158,6 +162,14 @@ if (
 }
 if (!sectionPage.includes("HumanReadablePanel")) {
   throw new Error("All dashboard sections must use the human-readable presentation layer.");
+}
+for (const required of ["AI 分析截图", "image/png,image/jpeg,image/webp", "截图未保存"]) {
+  if (!screenshotAnalysis.includes(required)) {
+    throw new Error(`Options screenshot analysis is missing safety/UI evidence: ${required}`);
+  }
+}
+if (!humanReadablePanels.includes("截图白话分析") || !humanReadablePanels.includes("自动下单")) {
+  throw new Error("Options screenshot analysis must display plain-language output and no-order boundary.");
 }
 if (
   humanReadablePanels.includes("JSON.stringify") ||

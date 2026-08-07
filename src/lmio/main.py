@@ -25,6 +25,7 @@ from lmio.options import (
     parse_barchart_csv,
     persisted_option,
 )
+from lmio.options_screenshot import validate_options_screenshot_data_url
 from lmio.plans import ConditionalPlan, PlanState, transition_with_evidence
 from lmio.roles import Principal
 from lmio.scheduler import run_scheduled_job, scheduler_status
@@ -219,10 +220,7 @@ async def telegram_webhook(request: Request) -> dict[str, str]:
         high_volume = dict(board.get("high_volume") or {})
         active_tickers = list(high_volume.get("tickers") or [])[:5]
         active_lines = [
-            (
-                f"- {dict(item).get('symbol')} · Cboe 榜单量 "
-                f"{dict(item).get('leaderboard_volume')}"
-            )
+            (f"- {dict(item).get('symbol')} · Cboe 榜单量 {dict(item).get('leaderboard_volume')}")
             for item in active_tickers
         ]
         if not candidates:
@@ -680,6 +678,45 @@ class AcceptanceControlInput(BaseModel):
     action: str = Field(
         pattern="^(smoke_test|provider_refresh|manual_pipeline|telegram_drain|health_refresh|scheduler_inspect|backup_status)$"
     )
+
+
+class OptionsScreenshotInput(BaseModel):
+    image_data_url: str = Field(min_length=32, max_length=2_700_000)
+
+
+@app.post("/api/v1/options/screenshot-analysis", tags=["research"])
+def analyse_options_screenshot(
+    payload: OptionsScreenshotInput,
+    principal: Annotated[Principal, Depends(require_dashboard_refresh)],
+) -> dict[str, object]:
+    """Analyse a transient owner-supplied screenshot without retaining the image."""
+
+    try:
+        mime_type, image_bytes = validate_options_screenshot_data_url(payload.image_data_url)
+        result = get_service().analyse_options_screenshot(
+            payload.image_data_url,
+            mime_type=mime_type,
+            image_bytes=image_bytes,
+            actor_role=str(principal.role),
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except RuntimeError as error:
+        status = 429 if "cap reached" in str(error).lower() else 503
+        raise HTTPException(status_code=status, detail=str(error)) from error
+    audit_event(
+        "options_screenshot_analysed",
+        actor=principal.actor_id,
+        role=str(principal.role),
+        resource_type="options_research",
+        resource_id=str(result.get("analysed_at", "latest")),
+        payload={
+            "image_bytes": image_bytes,
+            "image_retained": False,
+            "order_created": False,
+        },
+    )
+    return result
 
 
 @app.post("/api/v1/operator/full-refresh", tags=["system"])
@@ -1534,6 +1571,18 @@ app.get("/api/strategy-performance", tags=["research"])(performance_history)
 def _options_board_payload(symbol: str | None = None) -> dict[str, object]:
     service = get_service()
     records = service.store.history_json("options_flow", 200)
+    latest_screenshot_analysis = next(
+        (
+            {
+                "analysed_at": item.get("observed_at") or item.get("created_at"),
+                **dict(item.get("payload") or {}),
+            }
+            for item in records
+            if item.get("source") == "openai_options_screenshot"
+            and dict(item.get("payload") or {}).get("record_type") == "options_screenshot_analysis"
+        ),
+        None,
+    )
     latest_by_contract: dict[str, dict[str, Any]] = {}
     for record in records:
         payload = dict(record.get("payload") or {})
@@ -1626,6 +1675,7 @@ def _options_board_payload(symbol: str | None = None) -> dict[str, object]:
         },
         "candidates": candidates,
         "candidate_count": len(candidates),
+        "screenshot_analysis": latest_screenshot_analysis,
         "high_volume": {
             "provider": "Cboe Options Exchange",
             "state": (latest_cboe_check or {}).get("state", "not_verified"),

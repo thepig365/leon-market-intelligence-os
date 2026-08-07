@@ -17,6 +17,7 @@ from .finviz_csv import FinvizCSVProvider
 from .research import (
     NewsSynthesis,
     OpenAINewsWorker,
+    OpenAIOptionsScreenshotWorker,
     OpenAIResearchWorker,
     ResearchSynthesis,
     build_kimi_manual_packet,
@@ -36,6 +37,7 @@ __all__ = [
     "NewsProvider",
     "NewsSynthesis",
     "OpenAINewsWorker",
+    "OpenAIOptionsScreenshotWorker",
     "OpenAIResearchWorker",
     "Provider",
     "ProviderHealth",

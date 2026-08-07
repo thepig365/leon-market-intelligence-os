@@ -17,6 +17,12 @@ administrator key, Supabase service-role key or any provider credential. It
 reuses the approved Bayview Supabase identity and requires active private-beta
 claims with an owner, operator or reviewer role.
 
+The Options Trading area allows an owner or operator to upload a PNG, JPEG or
+WebP alert screenshot (maximum 2 MB) for tool-free OpenAI analysis. The image
+is sent transiently from the server and is not stored. Only the structured,
+plain-language research result is retained; it remains non-executable and does
+not provide an automatic buy or sell instruction.
+
 ## Local use
 
 Start the Python runtime from the repository root:

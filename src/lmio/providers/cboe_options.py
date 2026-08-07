@@ -12,9 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 CBOE_MOST_ACTIVE_ENDPOINT = (
     "https://www-api.cboe.com/us/options/market_statistics/most_active/data/"
 )
-CBOE_MOST_ACTIVE_PAGE = (
-    "https://www.cboe.com/markets/us/options/market-statistics/most-active/"
-)
+CBOE_MOST_ACTIVE_PAGE = "https://www.cboe.com/markets/us/options/market-statistics/most-active/"
 CBOE_RESPONSE_LIMIT_BYTES = 1_000_000
 CboeTransport = Callable[[str, dict[str, str], float], httpx.Response]
 
