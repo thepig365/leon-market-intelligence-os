@@ -264,6 +264,19 @@ def test_options_board_separates_cboe_volume_leaderboard_from_unusual_candidates
                         "contract_count": 2,
                     }
                 ],
+                "significant_watchlist": [
+                    {
+                        "symbol": "NVDA",
+                        "leaderboard_volume": 200000,
+                        "call_volume": 120000,
+                        "put_volume": 80000,
+                        "contract_count": 2,
+                        "rank": 1,
+                        "call_share_pct": 60.0,
+                        "put_share_pct": 40.0,
+                        "classification": "cboe_high_volume_watchlist_only",
+                    }
+                ],
                 "calls": [
                     {
                         "symbol": "NVDA",
@@ -297,6 +310,7 @@ def test_options_board_separates_cboe_volume_leaderboard_from_unusual_candidates
     body = response.json()
     assert body["candidate_count"] == 0
     assert body["high_volume"]["tickers"][0]["symbol"] == "NVDA"
+    assert body["high_volume"]["watchlist"][0]["symbol"] == "NVDA"
     assert body["high_volume"]["contracts"][0]["volume"] == 120000
     assert body["safety"]["can_trade"] is False
 

@@ -218,7 +218,7 @@ async def telegram_webhook(request: Request) -> dict[str, str]:
         candidates = list(board.get("candidates") or [])[:5]
         provider = dict(board.get("provider") or {})
         high_volume = dict(board.get("high_volume") or {})
-        active_tickers = list(high_volume.get("tickers") or [])[:5]
+        active_tickers = list(high_volume.get("watchlist") or high_volume.get("tickers") or [])[:5]
         active_lines = [
             (f"- {dict(item).get('symbol')} · Cboe 榜单量 {dict(item).get('leaderboard_volume')}")
             for item in active_tickers
@@ -1633,9 +1633,15 @@ def _options_board_payload(symbol: str | None = None) -> dict[str, object]:
     )
     cboe_payload = dict((latest_cboe_snapshot or {}).get("payload") or {})
     high_volume_tickers = list(cboe_payload.get("high_volume_tickers") or [])
+    significant_watchlist = list(cboe_payload.get("significant_watchlist") or [])
     if symbol:
         high_volume_tickers = [
             item for item in high_volume_tickers if str(dict(item).get("symbol")) == symbol.upper()
+        ]
+        significant_watchlist = [
+            item
+            for item in significant_watchlist
+            if str(dict(item).get("symbol")) == symbol.upper()
         ]
     cboe_contracts = [
         *list(cboe_payload.get("calls") or []),
@@ -1688,6 +1694,8 @@ def _options_board_payload(symbol: str | None = None) -> dict[str, object]:
             ),
             "source_url": cboe_payload.get("source_url"),
             "tickers": high_volume_tickers[:25],
+            "watchlist": significant_watchlist[:5],
+            "significant_volume_rule": cboe_payload.get("significant_volume_rule", {}),
             "contracts": sorted(
                 cboe_contracts,
                 key=lambda item: int(dict(item).get("volume") or 0),

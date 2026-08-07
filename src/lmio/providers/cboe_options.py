@@ -14,6 +14,8 @@ CBOE_MOST_ACTIVE_ENDPOINT = (
 )
 CBOE_MOST_ACTIVE_PAGE = "https://www.cboe.com/markets/us/options/market-statistics/most-active/"
 CBOE_RESPONSE_LIMIT_BYTES = 1_000_000
+CBOE_SIGNIFICANT_TICKER_VOLUME = 10_000
+CBOE_WATCHLIST_LIMIT = 5
 CboeTransport = Callable[[str, dict[str, str], float], httpx.Response]
 
 
@@ -95,6 +97,34 @@ class CboeMostActiveSnapshot(BaseModel):
             key=lambda item: int(item["leaderboard_volume"]),
             reverse=True,
         )
+
+    def significant_volume_watchlist(
+        self,
+        *,
+        minimum_volume: int = CBOE_SIGNIFICANT_TICKER_VOLUME,
+        limit: int = CBOE_WATCHLIST_LIMIT,
+    ) -> list[dict[str, object]]:
+        """Return a bounded Cboe-only discovery list, never a UOV signal."""
+
+        watchlist: list[dict[str, object]] = []
+        for ticker in self.high_volume_tickers():
+            total = int(ticker["leaderboard_volume"])
+            if total < minimum_volume:
+                continue
+            call_volume = int(ticker["call_volume"])
+            put_volume = int(ticker["put_volume"])
+            watchlist.append(
+                {
+                    **ticker,
+                    "rank": len(watchlist) + 1,
+                    "call_share_pct": round(call_volume / total * 100, 1),
+                    "put_share_pct": round(put_volume / total * 100, 1),
+                    "classification": "cboe_high_volume_watchlist_only",
+                }
+            )
+            if len(watchlist) >= max(1, min(limit, CBOE_WATCHLIST_LIMIT)):
+                break
+        return watchlist
 
 
 def _number(value: object, *, integer: bool = False) -> float | int:
@@ -195,5 +225,11 @@ def snapshot_payload(snapshot: CboeMostActiveSnapshot) -> dict[str, Any]:
         "calls": [item.model_dump(mode="json") for item in snapshot.calls],
         "puts": [item.model_dump(mode="json") for item in snapshot.puts],
         "high_volume_tickers": snapshot.high_volume_tickers(),
+        "significant_watchlist": snapshot.significant_volume_watchlist(),
+        "significant_volume_rule": {
+            "minimum_visible_leaderboard_volume": CBOE_SIGNIFICANT_TICKER_VOLUME,
+            "maximum_tickers": CBOE_WATCHLIST_LIMIT,
+            "meaning": "Cboe high-volume discovery only; not strict UOV qualification",
+        },
         "execution_allowed": False,
     }
