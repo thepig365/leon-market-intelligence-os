@@ -2,9 +2,6 @@
 
 import { useState } from "react";
 
-const IBKR_CLIENT_PORTAL_URL =
-  "https://www.interactivebrokers.com.au/sso/Login?forwardTo=22";
-
 export function IbkrPaperHandoffLink({ symbol }: { symbol: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -30,8 +27,7 @@ export function IbkrPaperHandoffLink({ symbol }: { symbol: string }) {
     return copiedByFallback;
   }
 
-  function openPaperTrading() {
-    window.open(IBKR_CLIENT_PORTAL_URL, "_blank", "noopener,noreferrer");
+  function launchTraderWorkstation() {
     void copyTicker().then((didCopy) => {
       if (didCopy) {
         setCopied(true);
@@ -40,18 +36,20 @@ export function IbkrPaperHandoffLink({ symbol }: { symbol: string }) {
     });
   }
 
+  const traderWorkstationUrl = `lmio-tws://open?symbol=${encodeURIComponent(symbol)}`;
+
   return (
-    <button
-      aria-label={`复制 ${symbol} 并打开 IBKR Paper Trading 登录`}
+    <a
+      aria-label={`复制 ${symbol} 并打开 Trader Workstation Paper Trading 登录`}
       className="tickerHandoff"
-      onClick={openPaperTrading}
-      title="复制代码并打开 IBKR；请使用 Paper Trading 账户登录"
-      type="button"
+      href={traderWorkstationUrl}
+      onClick={launchTraderWorkstation}
+      title="复制代码并打开 Trader Workstation；请使用 Paper Trading 账户登录"
     >
       {symbol} ↗
       <span className="srOnly" aria-live="polite">
         {copied ? `${symbol} 已复制` : ""}
       </span>
-    </button>
+    </a>
   );
 }

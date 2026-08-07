@@ -891,7 +891,7 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
               <p className="eyebrow">EXTRACTED FACTS</p>
               <h2>从截图读取的合约</h2>
               <p className="message">
-                点击股票代码会复制 ticker 并打开 IBKR 官方入口。请使用 Paper Trading 账户登录并人工核对；
+                点击股票代码会复制 ticker 并启动本机 Trader Workstation。请使用 Paper Trading 账户登录并人工核对；
                 LMIO 不保存密码、不建立订单，也不会自动提交交易。
               </p>
               <div className="optionsFactsTableWrap" tabIndex={0} aria-label="期权截图提取资料表，可横向滚动">

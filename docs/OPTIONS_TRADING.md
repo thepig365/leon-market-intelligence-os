@@ -54,11 +54,17 @@ permission exists, using `--generic-option-ticks` or
 `LMIO_OPTIONS_GENERIC_TICKS=true`. This does not enable trading.
 
 Each screenshot ticker can also be used as a manual handoff: LMIO copies the
-ticker and opens the official IBKR Australia Client Portal. The operator must
-sign in with the Paper Trading account, paste/search the ticker and inspect any
-order manually. LMIO does not receive or store the password, prefill an order,
-choose quantity or transmit an order. The handoff does not change
-`CAN_TRADE = FALSE`.
+ticker and calls the locally installed `LMIO TWS Launcher`, which opens the
+native Trader Workstation application. The operator must sign in with the
+Paper Trading account, paste/search the ticker and inspect any order manually.
+LMIO does not receive or store the password, prefill an order, choose quantity
+or transmit an order. The handoff does not change `CAN_TRADE = FALSE`.
+
+Install the macOS launcher once with
+`scripts/install_macos_tws_launcher.sh`. It registers only the `lmio-tws://`
+protocol, does not run a network service and does not read credentials or
+order data. Trader Workstation is expected at
+`~/Applications/Trader Workstation/Trader Workstation.app`.
 
 ### Barchart manual CSV
 
