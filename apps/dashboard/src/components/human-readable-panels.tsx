@@ -888,18 +888,47 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
             <section className="plainCard optionsLimitations">
               <p className="eyebrow">EXTRACTED FACTS</p>
               <h2>从截图读取的合约</h2>
-              <ul className="commandList">
-                {screenshotAlerts.map((alert, index) => (
-                  <li key={`${text(alert.symbol)}-${text(alert.expiry)}-${number(alert.strike)}-${index}`}>
-                    {text(alert.symbol)} · {optionRight(alert.right)} · {text(alert.expiry)}（{expiryDays(alert.days_to_expiry)}） ·
-                    <strong>{activeSide(alert.aggressor_side)}</strong> ·
-                    行权价 ${number(alert.strike, 2)} · {number(alert.contracts)} 张 ·
-                    成交价 ${number(alert.trade_price ?? alert.bought_price, 2)} · OI {number(alert.open_interest)} ·
-                    Volume/OI {number(alert.volume_oi_ratio, 1)}x · 权利金约 ${number(alert.total_premium_usd)}
-                    <br />主动方向依据：{text(alert.aggressor_basis, "截图没有明确 BOUGHT 或 SOLD，无法确认主动方向")}
-                  </li>
-                ))}
-              </ul>
+              <div className="optionsFactsTableWrap" tabIndex={0} aria-label="期权截图提取资料表，可横向滚动">
+                <table className="optionsFactsTable">
+                  <caption>截图分析时间：{date(screenshotRecord.analysed_at)}</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">代码</th>
+                      <th scope="col">期权</th>
+                      <th scope="col">到期日</th>
+                      <th scope="col">剩余</th>
+                      <th scope="col">B/S</th>
+                      <th scope="col">行权价</th>
+                      <th scope="col">数量</th>
+                      <th scope="col">成交价</th>
+                      <th scope="col">OI</th>
+                      <th scope="col">Volume/OI</th>
+                      <th scope="col">权利金</th>
+                      <th scope="col">主动方向依据</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {screenshotAlerts.map((alert, index) => (
+                      <tr key={`${text(alert.symbol)}-${text(alert.expiry)}-${number(alert.strike)}-${index}`}>
+                        <th scope="row">{text(alert.symbol)}</th>
+                        <td>{optionRight(alert.right)}</td>
+                        <td>{text(alert.expiry)}</td>
+                        <td>{expiryDays(alert.days_to_expiry)}</td>
+                        <td><strong>{activeSide(alert.aggressor_side)}</strong></td>
+                        <td>${number(alert.strike, 2)}</td>
+                        <td>{number(alert.contracts)} 张</td>
+                        <td>${number(alert.trade_price ?? alert.bought_price, 2)}</td>
+                        <td>{number(alert.open_interest)}</td>
+                        <td>{number(alert.volume_oi_ratio, 1)}x</td>
+                        <td>${number(alert.total_premium_usd)}</td>
+                        <td className="optionsFactsBasis">
+                          {text(alert.aggressor_basis, "截图没有明确 BOUGHT 或 SOLD，无法确认主动方向")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
           ) : null}
 
