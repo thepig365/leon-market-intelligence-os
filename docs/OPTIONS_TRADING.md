@@ -37,7 +37,12 @@ by at least 20 minutes and covers the Cboe Options Exchange, not consolidated
 US options volume.
 
 This route does **not** provide bid, ask or open interest, so it does not enter
-the unusual-contract classifier. It is a high-volume discovery list only. An
+the unusual-contract classifier. It is a high-volume discovery list only. LMIO
+ranks the visible leaderboard rows by underlying ticker and creates a bounded
+five-name observation list when visible leaderboard volume reaches 10,000
+contracts. One deduplicated private Telegram observation is sent per Cboe
+market timestamp. The message explicitly says that the list is delayed,
+Cboe-only and not a strict UOV confirmation or trade direction. An
 empty after-hours response never overwrites the last non-empty verified
 snapshot. The dashboard's full Refresh action and the weekday scheduled job
 both check this source without a subscription, credential or account login.

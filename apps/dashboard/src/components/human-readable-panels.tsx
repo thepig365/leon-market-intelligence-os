@@ -782,6 +782,8 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
   const safety = record(board.safety);
   const candidates = list(board.candidates).map(record);
   const highVolumeTickers = list(highVolume.tickers).map(record);
+  const highVolumeWatchlist = list(highVolume.watchlist).map(record);
+  const highVolumeRule = record(highVolume.significant_volume_rule);
   const highVolumeContracts = list(highVolume.contracts).map(record);
   const highVolumeState = text(highVolume.state, "not_verified");
   const limitations = list(board.limitations).map((item) => text(item));
@@ -790,7 +792,9 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
   const screenshotAlerts = list(screenshotAnalysis.alerts).map(record);
   const tickerAssessments = list(screenshotAnalysis.ticker_assessments).map(record);
   const providerReady = text(provider.state, "not_verified") === "ready";
+  const cboeReady = highVolumeState === "ready" && highVolumeTickers.length > 0;
   const stale = provider.stale !== false;
+  const strictUovReady = providerReady && !stale;
   const tradingLocked =
     safety.can_trade === false &&
     safety.paper_orders === false &&
@@ -804,25 +808,27 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
           <p className="eyebrow">UNUSUAL VOLUME RESEARCH</p>
           <h2>异常期权活动候选</h2>
           <p>
-            先检查成交量、未平仓量、价差和期限，再连续确认两次才发送 Telegram。
-            这里不会显示“买入”或“卖出”。
+            Cboe 显著成交量标的会进入观察名单并发送 Telegram；严格 UOV 仍须检查
+            未平仓量、价差和期限并连续确认两次。这里不会猜测“买入”或“卖出”。
           </p>
         </div>
-        <span className={`status ${providerReady && !stale ? "status-ready" : "status-empty"}`}>
-          {providerReady
-            ? (stale
-              ? "数据已过期"
-              : text(provider.name).includes("Barchart")
-                ? "人工 CSV 已导入"
-                : "延迟数据已连接")
-            : "等待期权资料"}
+        <span className={`status ${strictUovReady || cboeReady ? "status-ready" : "status-empty"}`}>
+          {strictUovReady
+            ? text(provider.name).includes("Barchart")
+              ? "人工 CSV 已导入"
+              : "延迟数据已连接"
+            : cboeReady
+              ? "Cboe观察名单已连接"
+              : providerReady
+                ? "完整UOV数据已过期"
+              : "等待期权资料"}
         </span>
       </div>
 
       <div className="commandMetrics optionsMetrics">
-        <div><span>本批读取合约</span><strong>{number(provider.records_received_last_batch)}</strong></div>
-        <div><span>本批达到门槛</span><strong>{number(provider.qualified_last_batch)}</strong></div>
-        <div><span>当前候选</span><strong>{number(board.candidate_count)}</strong></div>
+        <div><span>完整UOV合约</span><strong>{number(provider.records_received_last_batch)}</strong></div>
+        <div><span>Cboe观察标的</span><strong>{highVolumeWatchlist.length}</strong></div>
+        <div><span>严格UOV候选</span><strong>{number(board.candidate_count)}</strong></div>
         <div><span>交易能力</span><strong>{tradingLocked ? "关闭" : "异常"}</strong></div>
       </div>
 
@@ -975,8 +981,11 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
       )}
 
       <div className="sectionHeading">
-        <div><p className="eyebrow">CBOE MOST ACTIVE</p><h2>高成交量期权标的</h2></div>
-        <p>官方免费榜单，至少延迟 20 分钟；只统计榜单内合约，不代表全市场总量。</p>
+        <div><p className="eyebrow">CBOE MOST ACTIVE</p><h2>Telegram 高成交量观察名单</h2></div>
+        <p>
+          官方免费榜单，至少延迟 20 分钟；榜单可见成交量达到
+          {number(highVolumeRule.minimum_visible_leaderboard_volume)} 张后进入前五名观察名单。
+        </p>
       </div>
       <div className="optionsStatusGrid">
         <article className="plainCard">
@@ -1012,16 +1021,16 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
           <p className="safetyLine">不会触发模拟或实盘订单，也不会产生订阅费用。</p>
         </article>
       </div>
-      {highVolumeTickers.length ? (
+      {highVolumeWatchlist.length ? (
         <div className="optionsGrid">
-          {highVolumeTickers.map((ticker) => (
+          {highVolumeWatchlist.map((ticker) => (
             <article className="recordCard optionCard" key={text(ticker.symbol)}>
               <div className="recordCardTop">
                 <div>
                   <p className="eyebrow">HIGH-VOLUME UNDERLYING</p>
                   <h2>{text(ticker.symbol, "—")}</h2>
                 </div>
-                <span className="status status-ready">Cboe 榜单</span>
+                <span className="status status-ready">已纳入 Telegram 观察</span>
               </div>
               <dl className="factGrid">
                 <div><dt>榜单合约量合计</dt><dd>{number(ticker.leaderboard_volume)}</dd></div>
@@ -1033,7 +1042,7 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
           ))}
         </div>
       ) : (
-        <EmptyPanel message="当前检查没有返回交易时段榜单；系统不会生成假标的，且会继续保留最后一批有数据记录。" />
+        <EmptyPanel message="当前没有标的达到 Cboe 观察门槛；系统不会生成假标的，且会继续保留最后一批有数据记录。" />
       )}
       {highVolumeContracts.length ? (
         <section className="plainCard optionsLimitations">

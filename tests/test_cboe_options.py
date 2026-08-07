@@ -60,6 +60,30 @@ def test_cboe_parser_aggregates_only_bounded_equity_leaderboard_rows() -> None:
             "contract_count": 1,
         },
     ]
+    assert snapshot.significant_volume_watchlist() == [
+        {
+            "symbol": "NVDA",
+            "leaderboard_volume": 200000,
+            "call_volume": 120000,
+            "put_volume": 80000,
+            "contract_count": 2,
+            "rank": 1,
+            "call_share_pct": 60.0,
+            "put_share_pct": 40.0,
+            "classification": "cboe_high_volume_watchlist_only",
+        },
+        {
+            "symbol": "SPY",
+            "leaderboard_volume": 90000,
+            "call_volume": 90000,
+            "put_volume": 0,
+            "contract_count": 1,
+            "rank": 2,
+            "call_share_pct": 100.0,
+            "put_share_pct": 0.0,
+            "classification": "cboe_high_volume_watchlist_only",
+        },
+    ]
 
 
 def test_cboe_provider_rejects_non_json_responses() -> None:
@@ -98,6 +122,8 @@ def test_closed_market_check_does_not_replace_last_non_empty_snapshot(tmp_path: 
     ]
 
     assert first["status"] == "completed"
+    assert first["watchlist_tickers"] == 2
+    assert first["telegram"] == "queued_not_configured"
     assert second["status"] == "completed"
     assert events[0]["state"] == "no_current_session_data"
     assert events[0]["payload"]["total_contracts"] == 0

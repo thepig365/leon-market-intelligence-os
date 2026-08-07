@@ -1248,13 +1248,44 @@ class LMIOService:
                 "payload": payload,
             },
         )
+        watchlist = snapshot.significant_volume_watchlist()
+        telegram = "not_triggered_no_significant_tickers"
+        if watchlist:
+            watchlist_lines = [
+                (
+                    f"{item['rank']}. {item['symbol']} · Cboe榜单量 "
+                    f"{int(item['leaderboard_volume']):,} · Call {item['call_share_pct']}% · "
+                    f"Put {item['put_share_pct']}%"
+                )
+                for item in watchlist
+            ]
+            message = "\n".join(
+                (
+                    "LMIO · Cboe 高成交量期权观察名单",
+                    f"Cboe资料时间：{snapshot.market_timestamp.isoformat()}",
+                    *watchlist_lines,
+                    "这是至少延迟20分钟、仅覆盖Cboe榜单的成交量观察，不是严格UOV确认。",
+                    "缺少OI、Bid/Ask与全市场成交，不能判断主动买卖、开平仓或机构意图。",
+                    "仅供研究与决策支持；不会执行交易。",
+                )
+            )
+            telegram = queue_or_send(
+                self.store,
+                message,
+                bot_token=self.settings.telegram_bot_token.get_secret_value(),
+                chat_id=self.settings.telegram_chat_id.get_secret_value(),
+                kind=MessageKind.IMMEDIATE_ALERT,
+                dedupe_context=f"cboe-high-volume:{snapshot.market_timestamp.isoformat()}",
+            )
         return {
             "status": "completed",
             "provider": provider.name,
             "state": state,
             "contracts_received": snapshot.total_contracts,
             "tickers_received": len(snapshot.high_volume_tickers()),
+            "watchlist_tickers": len(watchlist),
             "market_timestamp": snapshot.market_timestamp.isoformat(),
+            "telegram": telegram,
             "execution_allowed": False,
         }
 
