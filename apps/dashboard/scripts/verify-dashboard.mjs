@@ -188,9 +188,10 @@ if (
   throw new Error("Options screenshot analysis must display plain-language output and no-order boundary.");
 }
 for (const required of [
-  "interactivebrokers.com.au/sso/Login",
+  "lmio-tws://open?symbol=",
   "navigator.clipboard.writeText",
   'document.execCommand("copy")',
+  "Trader Workstation",
   "Paper Trading",
 ]) {
   if (!ibkrPaperHandoff.includes(required)) {
