@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from urllib.request import Request
 
 import pytest
@@ -124,10 +125,13 @@ def test_openai_options_screenshot_worker_is_tool_free_and_does_not_store_image(
                         {
                             "symbol": "AAPL",
                             "expiry": "2026-08-10",
+                            "days_to_expiry": None,
                             "strike": 317.5,
                             "right": "call",
                             "contracts": 6964,
-                            "bought_price": 1.5,
+                            "trade_price": 1.5,
+                            "aggressor_side": "buy",
+                            "aggressor_basis": "截图明确写有 BOUGHT。",
                             "open_interest": 3474,
                             "total_premium_usd": 1044182,
                             "volume_oi_ratio": 2.0,
@@ -159,6 +163,7 @@ def test_openai_options_screenshot_worker_is_tool_free_and_does_not_store_image(
         api_key="server-secret",
         model="gpt-5.6-luna",
         transport=transport,
+        today=lambda: date(2026, 8, 7),
     )
     result = worker.analyse("data:image/png;base64,iVBORw0KGgo=")
 
@@ -171,6 +176,9 @@ def test_openai_options_screenshot_worker_is_tool_free_and_does_not_store_image(
     assert image["type"] == "input_image"
     assert image["detail"] == "high"
     assert image["image_url"].startswith("data:image/png;base64,")
+    assert result["alerts"][0]["days_to_expiry"] == 3
+    assert result["alerts"][0]["aggressor_side"] == "buy"
+    assert result["alerts"][0]["trade_price"] == 1.5
     assert result["order_created"] is False
     assert result["execution_allowed"] is False
     assert result["usage"] == {"input_tokens": 900, "output_tokens": 300}

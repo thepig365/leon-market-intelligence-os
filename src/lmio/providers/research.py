@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from datetime import date
 from typing import Any
 from urllib.request import Request, urlopen
 
@@ -15,7 +16,7 @@ from lmio.providers.contracts import ResearchWorker
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 RESEARCH_PROMPT_VERSION = "lmio-evidence-synthesis-v1"
 NEWS_PROMPT_VERSION = "lmio-news-synthesis-v1"
-OPTIONS_SCREENSHOT_PROMPT_VERSION = "lmio-options-screenshot-analysis-v1"
+OPTIONS_SCREENSHOT_PROMPT_VERSION = "lmio-options-screenshot-analysis-v2"
 
 
 class ResearchSynthesis(BaseModel):
@@ -56,10 +57,13 @@ class ExtractedOptionAlert(BaseModel):
 
     symbol: str
     expiry: str
+    days_to_expiry: int | None
     strike: float = Field(ge=0)
     right: str = Field(pattern="^(call|put)$")
     contracts: int = Field(ge=0)
-    bought_price: float = Field(ge=0)
+    trade_price: float = Field(ge=0)
+    aggressor_side: str = Field(pattern="^(buy|sell|unknown)$")
+    aggressor_basis: str
     open_interest: int = Field(ge=0)
     total_premium_usd: float = Field(ge=0)
     volume_oi_ratio: float = Field(ge=0)
@@ -279,11 +283,13 @@ class OpenAIOptionsScreenshotWorker:
         model: str,
         transport: OpenAITransport = _default_transport,
         timeout: float = 60,
+        today: Callable[[], date] = date.today,
     ) -> None:
         self._api_key = api_key.strip()
         self._model = model.strip()
         self._transport = transport
         self._timeout = timeout
+        self._today = today
 
     def analyse(self, image_data_url: str) -> dict[str, Any]:
         if not self._api_key or not self._model:
@@ -299,7 +305,11 @@ class OpenAIOptionsScreenshotWorker:
                 "解释它们可能代表的多空兴趣。必须说明单笔成交不能证明开仓、平仓、机构意图、"
                 "组合对冲或未来走势。不要给出直接买入、卖出、目标价、仓位或下单指令；只能给出"
                 "观察、等待确认、回避或资料不足，并列出成交方向、次日 OI、标的走势、IV、价差、"
-                "新闻与流动性等确认条件。"
+                "新闻与流动性等确认条件。expiry 必须输出 ISO 日期 YYYY-MM-DD。"
+                "若截图明确写 BOUGHT，aggressor_side 输出 buy，并说明截图标注主动买入；"
+                "若明确写 SOLD，输出 sell，并说明截图标注主动卖出；没有明确字样则必须输出 unknown，"
+                "不得根据 CALL、PUT 或价格猜测主动方向。"
+                "trade_price 只记录截图成交价。days_to_expiry 先输出 null，由 LMIO 按日期计算。"
             ),
             "input": [
                 {
@@ -336,6 +346,12 @@ class OpenAIOptionsScreenshotWorker:
         )
         response = self._transport(request, self._timeout)
         result = OptionsScreenshotSynthesis.model_validate_json(_extract_output_text(response))
+        today = self._today()
+        for alert in result.alerts:
+            try:
+                alert.days_to_expiry = (date.fromisoformat(alert.expiry) - today).days
+            except ValueError:
+                alert.days_to_expiry = None
         usage = response.get("usage") if isinstance(response.get("usage"), dict) else {}
         return {
             **result.model_dump(),

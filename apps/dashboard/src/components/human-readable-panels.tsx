@@ -109,6 +109,28 @@ function date(value: unknown) {
     : parsed.toLocaleString("zh-CN", { timeZone: "Australia/Melbourne" });
 }
 
+function optionRight(value: unknown) {
+  return text(value, "unknown").toLowerCase() === "put"
+    ? "看跌期权（PUT）"
+    : text(value, "unknown").toLowerCase() === "call"
+      ? "看涨期权（CALL）"
+      : "期权类型待确认";
+}
+
+function activeSide(value: unknown) {
+  const side = text(value, "unknown").toLowerCase();
+  if (side === "buy") return "主动买入";
+  if (side === "sell") return "主动卖出";
+  return "主动方向无法确认";
+}
+
+function expiryDays(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "剩余天数待确认";
+  if (value > 0) return `剩余 ${Math.round(value)} 天`;
+  if (value === 0) return "今天到期";
+  return `已到期 ${Math.abs(Math.round(value))} 天`;
+}
+
 function payload(value: unknown) {
   const item = record(value);
   return record(item.payload);
@@ -869,10 +891,12 @@ function OptionsPanel({ result }: { result: LMIOResult }) {
               <ul className="commandList">
                 {screenshotAlerts.map((alert, index) => (
                   <li key={`${text(alert.symbol)}-${text(alert.expiry)}-${number(alert.strike)}-${index}`}>
-                    {text(alert.symbol)} · {text(alert.right).toUpperCase()} · {text(alert.expiry)} ·
+                    {text(alert.symbol)} · {optionRight(alert.right)} · {text(alert.expiry)}（{expiryDays(alert.days_to_expiry)}） ·
+                    <strong>{activeSide(alert.aggressor_side)}</strong> ·
                     行权价 ${number(alert.strike, 2)} · {number(alert.contracts)} 张 ·
-                    成交价 ${number(alert.bought_price, 2)} · OI {number(alert.open_interest)} ·
+                    成交价 ${number(alert.trade_price ?? alert.bought_price, 2)} · OI {number(alert.open_interest)} ·
                     Volume/OI {number(alert.volume_oi_ratio, 1)}x · 权利金约 ${number(alert.total_premium_usd)}
+                    <br />主动方向依据：{text(alert.aggressor_basis, "截图没有明确 BOUGHT 或 SOLD，无法确认主动方向")}
                   </li>
                 ))}
               </ul>
