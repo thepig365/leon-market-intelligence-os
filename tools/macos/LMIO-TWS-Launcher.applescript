@@ -7,12 +7,9 @@ on open location theURL
 end open location
 
 on launchTraderWorkstation()
-	set traderWorkstationPath to (POSIX path of (path to home folder)) & "Applications/Trader Workstation/Trader Workstation.app"
 	try
-		do shell script "/usr/bin/test -d " & quoted form of traderWorkstationPath
-	on error
-		display alert "Trader Workstation is not installed" message "Expected TWS at ~/Applications/Trader Workstation/Trader Workstation.app."
-		return
+		do shell script "/usr/bin/open -a " & quoted form of "Trader Workstation"
+	on error errorMessage
+		display alert "Trader Workstation could not be opened" message "macOS could not locate the registered Trader Workstation application. " & errorMessage
 	end try
-	do shell script "/usr/bin/open " & quoted form of traderWorkstationPath
 end launchTraderWorkstation
