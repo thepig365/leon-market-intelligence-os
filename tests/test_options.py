@@ -71,7 +71,8 @@ def test_observation_rejects_sensitive_or_unknown_fields() -> None:
 def test_manual_barchart_csv_is_parsed_without_scraping() -> None:
     batch = parse_barchart_csv(
         "Symbol,Exp Date,Strike,Type,Bid,Ask,Last,Volume,Open Int,IV,Delta\n"
-        "SPY,09/18/26,700,Call,5.00,5.50,5.50,1000,200,25%,0.42\n"
+        f"SPY,{(datetime.now(UTC).date() + timedelta(days=14)).strftime('%m/%d/%y')},"
+        "700,Call,5.00,5.50,5.50,1000,200,25%,0.42\n"
     )
 
     assert batch.source == "barchart_manual_csv"

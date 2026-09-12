@@ -130,3 +130,15 @@ def require_telegram_webhook(
         )
     if not valid_webhook_secret(x_telegram_bot_api_secret_token, expected):
         raise HTTPException(status_code=403, detail="Invalid Telegram webhook secret.")
+
+
+TRADER_READ_PATHS = frozenset({
+    "/api/v1/screens/latest",
+    "/api/v1/options/board",
+    "/api/v1/system-health",
+})
+
+
+def valid_trader_read_credential(value: str | None) -> bool:
+    expected = get_settings().trader_read_api_key.get_secret_value()
+    return bool(expected and value and hmac.compare_digest(value, expected))

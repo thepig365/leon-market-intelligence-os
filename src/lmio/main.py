@@ -30,6 +30,7 @@ from lmio.plans import ConditionalPlan, PlanState, transition_with_evidence
 from lmio.roles import Principal
 from lmio.scheduler import run_scheduled_job, scheduler_status
 from lmio.security import (
+    TRADER_READ_PATHS,
     require_admin,
     require_cron,
     require_dashboard_refresh,
@@ -37,6 +38,7 @@ from lmio.security import (
     require_telegram_webhook,
     valid_cron_credential,
     valid_read_credential,
+    valid_trader_read_credential,
 )
 from lmio.service import LMIOService
 from lmio.telegram import (
@@ -74,7 +76,13 @@ DASHBOARD_PAGES = {
 async def require_runtime_read_key(request: Request, call_next: Any) -> Response:
     """Keep runtime evidence private while leaving a minimal health probe."""
 
-    read_allowed = valid_read_credential(request.headers.get("x-lmio-read-key"))
+    trader_allowed = valid_trader_read_credential(request.headers.get("x-lmio-read-key"))
+    if trader_allowed and (request.method != "GET" or request.url.path not in TRADER_READ_PATHS):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Trader credential is read-only and path-scoped."},
+        )
+    read_allowed = valid_read_credential(request.headers.get("x-lmio-read-key")) or trader_allowed
     cron_path = request.url.path in {
         "/api/v1/providers/finviz/refresh",
         "/api/v1/providers/news/refresh",

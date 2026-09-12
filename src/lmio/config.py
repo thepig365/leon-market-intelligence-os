@@ -58,6 +58,9 @@ class Settings(BaseSettings):
         default=SecretStr(""),
         validation_alias="SUPABASE_SERVICE_ROLE_KEY",
     )
+    trader_read_api_key: SecretStr = Field(
+        default=SecretStr(""), validation_alias="LMIO_TRADER_READ_API_KEY"
+    )
     read_api_key: SecretStr = Field(
         default=SecretStr(""),
         validation_alias="LMIO_READ_API_KEY",

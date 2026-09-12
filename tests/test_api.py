@@ -219,7 +219,8 @@ def test_owner_can_import_manual_barchart_csv_without_vendor_credentials(
         json={
             "csv_text": (
                 "Symbol,Exp Date,Strike,Type,Bid,Ask,Last,Volume,Open Int\n"
-                "SPY,09/18/26,700,Call,5.00,5.50,5.50,1000,200\n"
+                f"SPY,{(datetime.now(UTC).date() + timedelta(days=14)).strftime('%m/%d/%y')},"
+                "700,Call,5.00,5.50,5.50,1000,200\n"
             )
         },
     )
